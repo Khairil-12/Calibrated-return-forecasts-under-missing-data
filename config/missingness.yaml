@@ -1,0 +1,9 @@
+mar_rules:
+  - target_feature: "volatility_20d"
+    depends_on: "volume_ratio"
+    rule_type: "quantile_threshold"
+    params:
+      # Missing prob increases with volume_ratio quantile
+      base_prob: 0.05
+      max_prob: 0.5
+      quantile_threshold: 0.7

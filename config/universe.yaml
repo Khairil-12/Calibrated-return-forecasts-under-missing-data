@@ -1,0 +1,35 @@
+universe:
+  tickers:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - NVDA
+    - META
+    - TSLA
+    - BRK.B
+    - JPM
+    - JNJ
+    - V
+    - WMT
+    - MA
+    - PG
+    - UNH
+    - HD
+    - CVX
+    - MRK
+    - ABBV
+    - PEP
+    - KO
+    - COST
+    - AVGO
+    - TMO
+    - ACN
+    - DIS
+    - ADBE
+    - NKE
+    - CRM
+    - LIN
+  start_date: "2010-01-01"
+  end_date: "2024-12-31"
+  source: "yfinance"

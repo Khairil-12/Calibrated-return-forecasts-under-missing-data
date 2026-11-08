@@ -1,0 +1,51 @@
+experiment:
+  models:
+    - name: "logistic_regression"
+      params:
+        C: 1.0
+        max_iter: 1000
+        class_weight: "balanced"
+    - name: "lightgbm"
+      params:
+        n_estimators: 200
+        max_depth: 5
+        learning_rate: 0.05
+        num_leaves: 31
+        class_weight: "balanced"
+        verbosity: -1
+
+  imputers:
+    - name: "forward_fill"
+      params: {}
+    - name: "median"
+      params: {}
+    - name: "iterative"
+      params:
+        max_iter: 10
+        random_state: 42
+
+  calibrators:
+    - name: "none"
+      params: {}
+    - name: "platt"
+      params:
+        method: "sigmoid"
+    - name: "isotonic"
+      params:
+        method: "isotonic"
+
+  missingness:
+    mechanisms: ["MCAR", "MAR"]
+    rates: [0.0, 0.1, 0.2, 0.3]
+    seeds: [42, 123, 456, 789, 999]
+
+  splits:
+    train_years: 3
+    calibrate_months: 6
+    test_months: 6
+    roll_forward_months: 6
+    purge_days: 5
+
+  evaluation:
+    n_bins_ece: 10
+    metrics: ["brier", "ece", "roc_auc"]
