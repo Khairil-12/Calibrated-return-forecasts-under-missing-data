@@ -16,6 +16,10 @@
 - **Purge gap:** Minimum 5 trading days between training and test windows.
 - **Code quality:** Type hints, docstrings, ruff, pytest, ≥70% coverage on splits module.
 
+## Audit Gap: Date-Aware Window Semantics
+
+`get_split_indices` must calculate train/calibration/test windows from actual calendar offsets and locate observations by date, not approximate them as 252/21 positional samples. Purge removes the configured number of trading observations at each boundary. Keep `walk_forward_splits` as the sample-count API. Validate sorted unique dates and test holidays, actual window boundaries, purge counts, and fold leakage. Acceptance: irregular trading calendars retain calendar-defined window lengths and configured trading-observation purges.
+
 ## Review Focus
 
 1. **Walk-forward integrity:** Train always before calibrate, calibrate always before test.
