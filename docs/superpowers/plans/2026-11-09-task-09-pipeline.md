@@ -209,6 +209,14 @@ git commit -m "feat: add single configuration pipeline orchestration"
 
 ---
 
+## Audit Addendum
+
+Confirmed gaps against PRD Sections 10.3-10.4 and 12:
+
+- Pipeline output currently contains only the configured model metrics; it does not produce the required complete-data oracle and naive training-base-rate reference predictions/metrics. Task 10 must include both baselines in the result table for comparable configurations.
+- Reproducibility metadata is not returned: record library versions and data download date with experiment outputs (Task 10 owns persistence; pipeline should expose any per-run metadata it already has).
+- PRD requires stability summaries and paired significance tests with effect sizes and multiple-comparison correction. Task 10/15 must implement or explicitly scope documented outputs; raw per-fold/per-seed rows alone do not satisfy this requirement.
+
 ## Success Criteria
 
 - [ ] Single config runs end-to-end
