@@ -18,8 +18,8 @@ def compute_features(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     Returns:
         Tuple of (features DataFrame, target Series) with same MultiIndex
     """
-    # Work with a copy to avoid modifying original
-    df = raw.copy()
+    # Work chronologically per ticker without modifying original input.
+    df = raw.copy().sort_index(level=["ticker", "date"])
 
     # Ensure we have the right columns
     required_cols = ["open", "high", "low", "close", "adj_close", "volume"]
@@ -31,15 +31,9 @@ def compute_features(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     grouped = df.groupby(level="ticker")
 
     # 1. Log returns
-    df["return_1d"] = grouped["adj_close"].transform(
-        lambda x: np.log(x / x.shift(1))
-    )
-    df["return_5d"] = grouped["adj_close"].transform(
-        lambda x: np.log(x / x.shift(5))
-    )
-    df["return_20d"] = grouped["adj_close"].transform(
-        lambda x: np.log(x / x.shift(20))
-    )
+    df["return_1d"] = grouped["adj_close"].transform(lambda x: np.log(x / x.shift(1)))
+    df["return_5d"] = grouped["adj_close"].transform(lambda x: np.log(x / x.shift(5)))
+    df["return_20d"] = grouped["adj_close"].transform(lambda x: np.log(x / x.shift(20)))
 
     # 2. Rolling volatility (annualized)
     df["volatility_5d"] = grouped["return_1d"].transform(
@@ -50,23 +44,24 @@ def compute_features(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     )
 
     # 3. Volume ratio
-    df["volume_ratio"] = grouped["volume"].transform(
-        lambda x: x / x.rolling(20).mean()
-    )
+    df["volume_ratio"] = grouped["volume"].transform(lambda x: x / x.rolling(20).mean())
 
     # 4. HL range
     df["hl_range"] = (df["high"] - df["low"]) / df["close"]
 
     # 5. Price vs MA50
-    df["price_vs_ma50"] = grouped["adj_close"].transform(
-        lambda x: x / x.rolling(50).mean()
-    )
+    df["price_vs_ma50"] = grouped["adj_close"].transform(lambda x: x / x.rolling(50).mean())
 
     # Select feature columns
     feature_cols = [
-        "return_1d", "return_5d", "return_20d",
-        "volatility_5d", "volatility_20d",
-        "volume_ratio", "hl_range", "price_vs_ma50"
+        "return_1d",
+        "return_5d",
+        "return_20d",
+        "volatility_5d",
+        "volatility_20d",
+        "volume_ratio",
+        "hl_range",
+        "price_vs_ma50",
     ]
     features = df[feature_cols].copy()
 
