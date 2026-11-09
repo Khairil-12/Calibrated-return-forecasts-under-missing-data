@@ -2,7 +2,6 @@
 
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 # Required for IterativeImputer (experimental)
@@ -11,65 +10,34 @@ from sklearn.impute import IterativeImputer
 
 
 class ForwardFillImputer:
-    """Forward fill imputer with per-ticker grouping and median fallback for leading NaNs."""
+    """Forward fill imputer with training-median fallback for leading NaNs."""
 
     def __init__(self) -> None:
-        self.medians_: dict[str, float | dict[str, float]] = {}
+        self.medians_: dict[str, float] = {}
+        self.ticker_medians_: dict[str, dict[str, float]] = {}
 
     def _has_ticker_level(self, X: pd.DataFrame) -> bool:
-        """Check if DataFrame has a 'ticker' level in its index."""
         return "ticker" in X.index.names
 
     def fit(self, X: pd.DataFrame) -> "ForwardFillImputer":
-        """Compute medians for leading NaNs per ticker per column.
-
-        Args:
-            X: Training data with MultiIndex (ticker, date) or simple index
-
-        Returns:
-            Self
-        """
-        self.medians_ = {}
-        for col in X.columns:
-            if self._has_ticker_level(X):
-                # Get first non-NaN per ticker group, or overall median
-                first_valid = X.groupby(level="ticker")[col].apply(
-                    lambda s: s.dropna().iloc[0] if not s.dropna().empty else np.nan
-                )
-                overall_median = float(X[col].median())
-                self.medians_[col] = first_valid.fillna(overall_median).to_dict()
-            else:
-                # Simple case: just use overall median (flat structure for compatibility)
-                overall_median = float(X[col].median())
-                self.medians_[col] = overall_median
+        self.medians_ = X.median().to_dict()
+        self.ticker_medians_ = {}
+        if self._has_ticker_level(X):
+            for col in X.columns:
+                self.ticker_medians_[col] = X.groupby(level="ticker")[col].median().dropna().to_dict()
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Forward fill within each ticker, then fill remaining leading NaNs with medians.
-
-        Args:
-            X: Data to impute
-
-        Returns:
-            Imputed DataFrame
-        """
         X_imp = X.copy()
         for col in X.columns:
-            med = self.medians_[col]
             if self._has_ticker_level(X_imp):
-                # Forward fill within each ticker
                 X_imp[col] = X_imp.groupby(level="ticker")[col].ffill()
-                # Fill remaining leading NaNs with stored medians
-                if isinstance(med, dict):
-                    for ticker, m in med.items():
-                        mask = (X_imp.index.get_level_values("ticker") == ticker) & X_imp[col].isna()
-                        X_imp.loc[mask, col] = m
+                fallback = X_imp.index.get_level_values("ticker").map(
+                    self.ticker_medians_[col]
+                ).fillna(self.medians_[col])
+                X_imp[col] = X_imp[col].fillna(pd.Series(fallback, index=X_imp.index))
             else:
-                # Simple forward fill
-                X_imp[col] = X_imp[col].ffill()
-                # Fill remaining leading NaNs with stored median
-                if isinstance(med, int | float):
-                    X_imp[col] = X_imp[col].fillna(med)
+                X_imp[col] = X_imp[col].ffill().fillna(self.medians_[col])
         return X_imp
 
 
