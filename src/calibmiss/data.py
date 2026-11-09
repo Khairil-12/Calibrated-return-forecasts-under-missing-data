@@ -5,8 +5,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import pandas as pd  # type: ignore[import-untyped]
-import yfinance as yf  # type: ignore[import-untyped]
+import pandas as pd
+import yfinance as yf
 
 
 @dataclass
