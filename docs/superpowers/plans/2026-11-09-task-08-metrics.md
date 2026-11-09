@@ -10,6 +10,10 @@
 
 **Spec:** PRD Sections 10.3, 14.3
 
+## Audit Gap: Metric Input Contract
+
+Validate equal nonzero input lengths, binary labels, finite probabilities within [0, 1], and positive `n_bins`. When labels contain one class, return `nan` ROC AUC while still computing other metrics. Acceptance: invalid arguments raise `ValueError`; one-class data returns finite Brier/ECE/reliability values and `nan` AUC.
+
 ## Global Constraints
 
 - **ECE:** 10 equal-width bins [0, 0.1), [0.1, 0.2), ..., [0.9, 1.0]
