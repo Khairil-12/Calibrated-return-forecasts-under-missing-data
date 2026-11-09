@@ -1,7 +1,7 @@
 """Tests for feature engineering with lookahead safety."""
 
 import numpy as np
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 from calibmiss.features import compute_features
 
 
@@ -23,16 +23,18 @@ def create_sample_raw_data() -> pd.DataFrame:
             open_price = prices[i] * (1 + np.random.normal(0, 0.005))
             volume = int(np.random.lognormal(13, 0.5))
 
-            data.append({
-                "ticker": ticker,
-                "date": date,
-                "open": open_price,
-                "high": high,
-                "low": low,
-                "close": prices[i],
-                "adj_close": prices[i],
-                "volume": volume
-            })
+            data.append(
+                {
+                    "ticker": ticker,
+                    "date": date,
+                    "open": open_price,
+                    "high": high,
+                    "low": low,
+                    "close": prices[i],
+                    "adj_close": prices[i],
+                    "volume": volume,
+                }
+            )
 
     df = pd.DataFrame(data)
     df = df.set_index(["ticker", "date"])
@@ -48,9 +50,14 @@ class TestComputeFeatures:
         features, target = compute_features(raw)
 
         expected_cols = [
-            "return_1d", "return_5d", "return_20d",
-            "volatility_5d", "volatility_20d",
-            "volume_ratio", "hl_range", "price_vs_ma50"
+            "return_1d",
+            "return_5d",
+            "return_20d",
+            "volatility_5d",
+            "volatility_20d",
+            "volume_ratio",
+            "hl_range",
+            "price_vs_ma50",
         ]
         assert list(features.columns) == expected_cols
         assert target.name == "target"
@@ -85,17 +92,20 @@ class TestComputeFeatures:
         # Align indices (they should be the same)
         pd.testing.assert_frame_equal(features_early, features_corrupted_early)
 
-    def test_target_drops_zero_return_days(self) -> None:
-        """Test that target drops zero-return days."""
+    def test_shuffled_input_matches_chronological_output(self) -> None:
         raw = create_sample_raw_data()
+        expected_features, expected_target = compute_features(raw)
 
-        # Create a case with zero return
+        shuffled_features, shuffled_target = compute_features(raw.sample(frac=1, random_state=7))
+
+        pd.testing.assert_frame_equal(shuffled_features, expected_features)
+        pd.testing.assert_series_equal(shuffled_target, expected_target)
+
+    def test_target_drops_zero_return_days(self) -> None:
+        raw = create_sample_raw_data()
         raw.loc[("AAPL", "2023-01-05"), "adj_close"] = raw.loc[("AAPL", "2023-01-04"), "adj_close"]
 
         _, target = compute_features(raw)
 
-        # Zero-return day should not be in target index
-        # The target is computed from next day return, so we check that
-        # the day before the zero-return day is handled correctly
-        assert len(target) > 0
-        assert set(target.unique()) == {0, 1}
+        assert ("AAPL", pd.Timestamp("2023-01-04")) not in target.index
+        assert ("AAPL", pd.Timestamp("2023-01-05")) in target.index
