@@ -1,21 +1,23 @@
 """Tests for walk-forward splits with purge gap."""
 
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 from calibmiss.splits import SplitIndices, get_split_indices, walk_forward_splits
 
 
 def test_walk_forward_splits_basic() -> None:
     """Test basic walk-forward split generation."""
     n_samples = 2000
-    splits = list(walk_forward_splits(
-        n_samples=n_samples,
-        train_years=2,
-        calibrate_months=3,
-        test_months=3,
-        roll_forward_months=3,
-        purge_days=5,
-        freq="B"
-    ))
+    splits = list(
+        walk_forward_splits(
+            n_samples=n_samples,
+            train_years=2,
+            calibrate_months=3,
+            test_months=3,
+            roll_forward_months=3,
+            purge_days=5,
+            freq="B",
+        )
+    )
     assert len(splits) > 0
     for train, cal, test in splits:
         assert len(train) > 0 and len(cal) > 0 and len(test) > 0
@@ -29,15 +31,17 @@ def test_walk_forward_splits_basic() -> None:
 def test_purge_gap_enforced() -> None:
     """Test that purge gap is enforced between train/calibrate and calibrate/test."""
     n_samples = 1000
-    splits = list(walk_forward_splits(
-        n_samples=n_samples,
-        train_years=2,
-        calibrate_months=3,
-        test_months=3,
-        roll_forward_months=3,
-        purge_days=5,
-        freq="B"
-    ))
+    splits = list(
+        walk_forward_splits(
+            n_samples=n_samples,
+            train_years=2,
+            calibrate_months=3,
+            test_months=3,
+            roll_forward_months=3,
+            purge_days=5,
+            freq="B",
+        )
+    )
     for train, cal, test in splits:
         assert cal.min() - train.max() >= 5
         assert test.min() - cal.max() >= 5
@@ -46,15 +50,17 @@ def test_purge_gap_enforced() -> None:
 def test_no_data_leakage_between_folds() -> None:
     """Test that no future data leaks into train (no lookahead)."""
     n_samples = 2000
-    splits = list(walk_forward_splits(
-        n_samples=n_samples,
-        train_years=2,
-        calibrate_months=3,
-        test_months=3,
-        roll_forward_months=3,
-        purge_days=5,
-        freq="B"
-    ))
+    splits = list(
+        walk_forward_splits(
+            n_samples=n_samples,
+            train_years=2,
+            calibrate_months=3,
+            test_months=3,
+            roll_forward_months=3,
+            purge_days=5,
+            freq="B",
+        )
+    )
     # Check that train never includes data from its own or future test sets
     # (this would be lookahead bias)
     for i, (train, _, test) in enumerate(splits):
@@ -64,6 +70,42 @@ def test_no_data_leakage_between_folds() -> None:
             future_test.update(splits[j][2])
         # Train should not include current or future test data
         assert not (set(train) & future_test), f"Fold {i}: train includes future test data"
+
+
+def test_get_split_indices_uses_calendar_windows_and_trading_day_purge() -> None:
+    dates = pd.bdate_range("2020-01-01", "2026-12-31").drop(pd.Timestamp("2021-01-01"))
+    splits_config = {
+        "train_years": 2,
+        "calibrate_months": 3,
+        "test_months": 3,
+        "roll_forward_months": 3,
+        "purge_days": 5,
+    }
+
+    splits = get_split_indices(dates, splits_config)
+
+    assert splits
+    first = splits[0]
+    assert first.train_start == dates[0]
+    assert first.train_end < pd.Timestamp("2022-01-01")
+    assert len(first.train_idx) == dates.searchsorted(pd.Timestamp("2022-01-01"))
+    assert (
+        len(first.calibrate_idx)
+        == dates.searchsorted(pd.Timestamp("2022-04-01"))
+        - dates.searchsorted(pd.Timestamp("2022-01-01"))
+        - 5
+    )
+    assert first.calibrate_idx[0] - first.train_idx[-1] == 6
+    assert first.test_idx[0] - first.calibrate_idx[-1] == 6
+
+
+def test_get_split_indices_rejects_unsorted_or_duplicate_dates() -> None:
+    dates = pd.DatetimeIndex(["2020-01-02", "2020-01-01", "2020-01-02"])
+
+    import pytest
+
+    with pytest.raises(ValueError, match="sorted and unique"):
+        get_split_indices(dates, {})
 
 
 def test_get_split_indices_with_dates() -> None:
@@ -76,7 +118,7 @@ def test_get_split_indices_with_dates() -> None:
         "calibrate_months": 3,
         "test_months": 3,
         "roll_forward_months": 3,
-        "purge_days": 5
+        "purge_days": 5,
     }
 
     split_indices = get_split_indices(dates, splits_config)
