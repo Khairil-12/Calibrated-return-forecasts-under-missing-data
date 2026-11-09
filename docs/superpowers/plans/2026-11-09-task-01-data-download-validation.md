@@ -17,6 +17,10 @@
 - **Code quality:** Type hints on public functions, docstrings, ruff linting, pytest tests.
 - **Checksums:** Raw data files saved with SHA256 in filename.
 
+## Audit Gap: Cache Integrity
+
+Cached parquet files must be re-hashed after loading and compared with the SHA256 encoded in the filename. A corrupt or mismatched cache entry must not be returned; discard it and download fresh data. Acceptance: a valid-but-modified parquet payload triggers a new download and yields verified content.
+
 ## Review Focus
 
 1. **Cache correctness:** Same tickers/date range must return cached data without re-downloading.
