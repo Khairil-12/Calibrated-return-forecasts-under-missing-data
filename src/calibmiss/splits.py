@@ -10,6 +10,7 @@ import pandas as pd
 @dataclass
 class SplitIndices:
     """Indices for a single walk-forward split."""
+
     train_idx: np.ndarray[tuple[int, ...], np.dtype[np.int_]]
     calibrate_idx: np.ndarray[tuple[int, ...], np.dtype[np.int_]]
     test_idx: np.ndarray[tuple[int, ...], np.dtype[np.int_]]
@@ -38,15 +39,15 @@ def walk_forward_splits(
     test_months: int,
     roll_forward_months: int,
     purge_days: int,
-    freq: str = "B"
+    freq: str = "B",
 ) -> Generator[
     tuple[
         np.ndarray[tuple[int, ...], np.dtype[np.int_]],
         np.ndarray[tuple[int, ...], np.dtype[np.int_]],
-        np.ndarray[tuple[int, ...], np.dtype[np.int_]]
+        np.ndarray[tuple[int, ...], np.dtype[np.int_]],
     ],
     None,
-    None
+    None,
 ]:
     """Generate walk-forward splits with purge gaps.
 
@@ -91,10 +92,7 @@ def walk_forward_splits(
         train_start += roll_forward
 
 
-def get_split_indices(
-    dates: pd.DatetimeIndex,
-    splits_config: dict[str, int]
-) -> list[SplitIndices]:
+def get_split_indices(dates: pd.DatetimeIndex, splits_config: dict[str, int]) -> list[SplitIndices]:
     """Generate walk-forward splits using actual dates.
 
     Args:
@@ -111,45 +109,55 @@ def get_split_indices(
     roll_forward_months = splits_config.get("roll_forward_months", 6)
     purge_days = splits_config.get("purge_days", 5)
 
-    train_bdays = _years_to_bdays(train_years)
-    calibrate_bdays = _months_to_bdays(calibrate_months)
-    test_bdays = _months_to_bdays(test_months)
-    roll_forward_bdays = _months_to_bdays(roll_forward_months)
+    if not dates.is_monotonic_increasing or dates.has_duplicates:
+        raise ValueError("dates must be sorted and unique")
+    if min(train_years, calibrate_months, test_months, roll_forward_months) <= 0:
+        raise ValueError("window lengths must be positive")
+    if purge_days < 0:
+        raise ValueError("purge_days must be non-negative")
 
-    n_samples = len(dates)
-    splits = []
+    splits: list[SplitIndices] = []
+    train_start = dates[0]
+    last_date = dates[-1]
+    train_offset = pd.DateOffset(years=train_years)
+    calibrate_offset = pd.DateOffset(months=calibrate_months)
+    test_offset = pd.DateOffset(months=test_months)
+    roll_offset = pd.DateOffset(months=roll_forward_months)
 
-    # First fold: train starts at 0
-    train_start = 0
+    while train_start + train_offset <= last_date:
+        train_end_position = int(dates.searchsorted(train_start + train_offset, side="left"))
+        train_positions = np.arange(int(dates.searchsorted(train_start)), train_end_position)
+        cal_start_position = train_end_position + purge_days
+        cal_start_date = train_start + train_offset
+        cal_end_date = cal_start_date + calibrate_offset
+        cal_end_position = int(dates.searchsorted(cal_end_date, side="left"))
+        cal_positions = np.arange(cal_start_position, cal_end_position)
+        test_start_position = cal_end_position + purge_days
+        test_end_date = cal_end_date + test_offset
+        test_end_position = int(dates.searchsorted(test_end_date, side="left"))
+        test_positions = np.arange(test_start_position, test_end_position)
 
-    while True:
-        train_end = train_start + train_bdays
-        cal_start = train_end + purge_days
-        cal_end = cal_start + calibrate_bdays
-        test_start = cal_end + purge_days
-        test_end = test_start + test_bdays
-
-        if test_end > n_samples:
+        if (
+            test_end_date > last_date
+            or not train_positions.size
+            or not cal_positions.size
+            or not test_positions.size
+        ):
             break
 
-        train_idx = np.arange(train_start, train_end)
-        cal_idx = np.arange(cal_start, cal_end)
-        test_idx = np.arange(test_start, test_end)
-
-        split = SplitIndices(
-            train_idx=train_idx,
-            calibrate_idx=cal_idx,
-            test_idx=test_idx,
-            train_start=dates[train_start],
-            train_end=dates[train_end - 1],
-            calibrate_start=dates[cal_start],
-            calibrate_end=dates[cal_end - 1],
-            test_start=dates[test_start],
-            test_end=dates[test_end - 1]
+        splits.append(
+            SplitIndices(
+                train_idx=train_positions,
+                calibrate_idx=cal_positions,
+                test_idx=test_positions,
+                train_start=dates[train_positions[0]],
+                train_end=dates[train_positions[-1]],
+                calibrate_start=dates[cal_positions[0]],
+                calibrate_end=dates[cal_positions[-1]],
+                test_start=dates[test_positions[0]],
+                test_end=dates[test_positions[-1]],
+            )
         )
-        splits.append(split)
-
-        # Roll forward
-        train_start += roll_forward_bdays
+        train_start += roll_offset
 
     return splits
