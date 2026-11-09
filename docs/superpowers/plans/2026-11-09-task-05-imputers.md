@@ -12,15 +12,17 @@
 
 ## Global Constraints
 
-- **Fit on train only:** Imputers fit ONLY on training split, then applied to test.
-- **No data leakage:** Test imputation uses only training statistics.
+- **Fit on train only:** Imputers fit ONLY on the training split, then apply to train, calibration, and test data.
+- **No data leakage:** Learned fallback statistics come only from training data. Forward fill may use earlier observed feature values within the transformed split, including test, because that is causal time-series history; it must never use later rows or cross ticker boundaries.
+- **Chronological input:** Data passed to `ForwardFillImputer.transform()` is ordered by date within ticker.
 
 ## Review Focus
 
-1. **Forward fill per ticker:** Must forward fill within each ticker group, not across tickers.
-2. **Median from train only:** Test NaNs filled with training medians.
-3. **Iterative imputer fit on train:** sklearn's IterativeImputer fit on training data only.
-4. **Fit-on-train-only test:** Critical test verifying no test info leakage.
+1. **Causal forward fill:** Within each ticker, a missing value can use only an earlier observed value; later rows must not affect earlier imputations.
+2. **Ticker isolation:** Forward fill must never carry values across ticker groups.
+3. **Training-only fallback:** Leading gaps use per-ticker training median, falling back to overall training median for unseen tickers or all-missing ticker columns.
+4. **Median and iterative fit:** Median and sklearn IterativeImputer fit on training data only; test distribution must not change fitted statistics or learned parameters.
+5. **Input order:** Forward-fill inputs must be sorted chronologically within ticker before transformation.
 
 ---
 
@@ -34,68 +36,22 @@
 
 ---
 
-### Step 1: Write failing test for forward fill imputer
+### Step 1: Write failing tests for causal forward fill and fallback
 
-```python
-# tests/test_imputers.py
-import pytest
-import pandas as pd
-import numpy as np
-from calibmiss.imputers import ForwardFillImputer
+Add tests to `tests/test_imputers.py`:
 
-def test_forward_fill_within_ticker():
-    # MultiIndex (ticker, date) with NaN
-    idx = pd.MultiIndex.from_tuples([
-        ("AAPL", "2023-01-01"), ("AAPL", "2023-01-02"), ("AAPL", "2023-01-03"),
-        ("MSFT", "2023-01-01"), ("MSFT", "2023-01-02"), ("MSFT", "2023-01-03")
-    ], names=["ticker", "date"])
-    X_train = pd.DataFrame({"feat": [1.0, np.nan, 3.0, 10.0, np.nan, 30.0]}, index=idx)
-    X_test = pd.DataFrame({"feat": [np.nan, 5.0, np.nan, np.nan, 20.0, np.nan]}, index=idx)
-    
-    imputer = ForwardFillImputer()
-    imputer.fit(X_train)
-    X_train_imp = imputer.transform(X_train)
-    X_test_imp = imputer.transform(X_test)
-    
-    assert not X_train_imp.isna().any().any()
-    assert not X_test_imp.isna().any().any()
-    # AAPL: [1, NaN, 3] -> [1, 1, 3] (forward fill)
-    # MSFT: [10, NaN, 30] -> [10, 10, 30]
-    assert X_train_imp.loc[("AAPL", "2023-01-02"), "feat"] == 1.0
-    assert X_train_imp.loc[("MSFT", "2023-01-02"), "feat"] == 10.0
-```
+- `test_forward_fill_within_ticker` verifies interior NaNs use the previous value from the same ticker and never another ticker's value.
+- `test_forward_fill_uses_training_median_for_leading_gaps` fits on a training MultiIndex with different values per ticker, then transforms a later test split whose first row per ticker is missing. Assert each leading gap uses that ticker's training median.
+- `test_forward_fill_uses_global_training_median_for_unseen_ticker` transforms a ticker absent from training and verifies fallback uses the overall training median.
+- `test_forward_fill_is_causal` changes a later test observation and verifies earlier imputed rows remain identical; assert a later non-missing value stays unchanged.
+
+Use chronological date indexes in each ticker group. The test split must have dates after the training split. Assert all returned values are non-missing when training fallback values are available.
 
 ---
 
 ### Step 2: Implement `ForwardFillImputer`
 
-```python
-class ForwardFillImputer:
-    def fit(self, X: pd.DataFrame) -> "ForwardFillImputer":
-        # Compute column medians for leading NaNs (per ticker)
-        self.medians_ = {}
-        for col in X.columns:
-            # Get first non-NaN per ticker group, or overall median
-            first_valid = X.groupby(level="ticker")[col].apply(
-                lambda s: s.dropna().iloc[0] if not s.dropna().empty else np.nan
-            )
-            overall_median = X[col].median()
-            self.medians_[col] = first_valid.fillna(overall_median).to_dict()
-        return self
-    
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
-        X_imp = X.copy()
-        for col in X.columns:
-            # Forward fill within each ticker
-            X_imp[col] = X_imp.groupby(level="ticker")[col].ffill()
-            # Fill remaining leading NaNs with stored medians
-            for ticker, med in self.medians_[col].items():
-                mask = (X_imp.index.get_level_values("ticker") == ticker) & X_imp[col].isna()
-                X_imp.loc[mask, col] = med
-        return X_imp
-```
-
----
+`fit(X)` stores the overall training median per column and each ticker's training median per column. If a ticker has no observed training value for a column, its fallback is the overall training median. `transform(X)` forward-fills each column within ticker in input order, then fills remaining leading NaNs from the fitted per-ticker fallback or overall fallback for unseen tickers. For a simple index without a ticker level, use forward fill followed by the overall training median. Do not sort or otherwise reorder caller rows.
 
 ### Step 3: Write failing test for median imputer
 
@@ -194,22 +150,15 @@ class IterativeImputerWrapper:
 
 ---
 
-### Step 7: Write critical test for fit-on-train-only enforcement
+### Step 7: Write tests for train-only fitting
 
-```python
-def test_imputers_never_fit_on_test():
-    X_train = pd.DataFrame({"a": [1, 2, np.nan]})
-    X_test = pd.DataFrame({"a": [100, np.nan]})  # Very different distribution
-    
-    for ImputerClass in [ForwardFillImputer, MedianImputer, IterativeImputerWrapper]:
-        imputer = ImputerClass()
-        imputer.fit(X_train)
-        X_test_imp = imputer.transform(X_test)
-        if hasattr(imputer, "medians_"):
-            assert X_test_imp["a"].iloc[1] == imputer.medians_["a"]
-```
+Add tests to `tests/test_imputers.py`:
 
----
+- `test_median_imputer_fit_on_train_only` asserts the fitted medians equal training medians and a missing test value uses the training median despite extreme observed test values.
+- `test_iterative_imputer_fit_on_train_only` fits two wrappers on identical training data, transforms test frames with different extreme values, and verifies each wrapper's learned `imputer.initial_imputer_.statistics_` is unchanged by `transform()`.
+- `test_forward_fill_fallback_fit_on_train_only` fits two imputers on identical training data and verifies changing test values cannot change fitted per-ticker or overall fallback medians; verify a leading missing value is filled from the training fallback.
+
+Do not assert that an interior forward-fill gap uses a training median: it must use the preceding observed value in the same chronological test series.
 
 ### Step 8: Implement factory function
 
@@ -267,10 +216,11 @@ git commit -m "feat: add three imputation strategies with fit-on-train-only enfo
 
 ## Success Criteria
 
-- [ ] Forward fill works per ticker group
+- [ ] Forward fill is causal, remains isolated per ticker, and preserves input row order
+- [ ] Leading gaps use per-ticker training median or overall training median for unseen/all-missing tickers
 - [ ] Median imputer uses training medians for test
-- [ ] Iterative imputer wraps sklearn correctly
-- [ ] Fit-on-train-only test passes for all three imputers
+- [ ] Iterative imputer wraps sklearn correctly and fits only on training data
+- [ ] Tests prove transformed test history does not alter learned fallback statistics or fitted imputer parameters
 - [ ] Factory function returns correct imputer
 - [ ] All tests pass
 - [ ] Coverage ≥70%
