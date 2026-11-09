@@ -1,7 +1,7 @@
 """Tests for missingness simulation (MCAR and MAR)."""
 
 import numpy as np
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 from calibmiss.missingness import MARRuleConfig, inject_mar, inject_mcar, simulate_missingness_grid
 
 
@@ -52,16 +52,15 @@ class TestMAR:
     def test_mar_depends_on_observed_variable(self) -> None:
         """Test that MAR missingness depends on observed variable."""
         np.random.seed(42)
-        X = pd.DataFrame({
-            "volatility_20d": np.random.randn(1000),
-            "volume_ratio": np.random.rand(1000)
-        })
+        X = pd.DataFrame(
+            {"volatility_20d": np.random.randn(1000), "volume_ratio": np.random.rand(1000)}
+        )
 
         rule = MARRuleConfig(
             target_feature="volatility_20d",
             depends_on="volume_ratio",
             rule_type="quantile_threshold",
-            params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7}
+            params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7},
         )
         X_missing, realized = inject_mar(X, rule, target_rate=0.2, seed=42)
 
@@ -74,16 +73,13 @@ class TestMAR:
 
     def test_mar_target_rate_achieved(self) -> None:
         """Test that MAR achieves target rate through calibration."""
-        X = pd.DataFrame({
-            "feature_a": np.random.randn(1000),
-            "feature_b": np.random.rand(1000)
-        })
+        X = pd.DataFrame({"feature_a": np.random.randn(1000), "feature_b": np.random.rand(1000)})
 
         rule = MARRuleConfig(
             target_feature="feature_a",
             depends_on="feature_b",
             rule_type="quantile_threshold",
-            params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7}
+            params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7},
         )
         X_missing, realized = inject_mar(X, rule, target_rate=0.2, seed=42)
 
@@ -91,19 +87,62 @@ class TestMAR:
         target_missing_rate = X_missing["feature_a"].isna().mean()
         assert abs(target_missing_rate - 0.2) < 0.03
 
+    def test_mar_calibrates_boundary_and_intermediate_rates(self) -> None:
+        X = pd.DataFrame({"target": np.zeros(20000), "driver": np.linspace(0, 1, 20000)})
+        rule = MARRuleConfig(
+            target_feature="target",
+            depends_on="driver",
+            rule_type="quantile_threshold",
+            params={"quantile_threshold": 0.7},
+        )
+
+        for target_rate in (0.0, 0.1, 0.3, 0.8, 1.0):
+            masked, realized = inject_mar(X, rule, target_rate=target_rate, seed=42)
+            assert abs(realized["target"] - target_rate) < 0.015
+            assert not masked["driver"].isna().any()
+
+        masked, _ = inject_mar(X, rule, target_rate=0.3, seed=42)
+        missing = masked["target"].isna()
+        high = X["driver"] > X["driver"].quantile(0.7)
+        assert missing[high].mean() > missing[~high].mean()
+
+    def test_mar_rejects_invalid_rate_and_parameters(self) -> None:
+        X = pd.DataFrame({"target": [1.0, 2.0], "driver": [0.0, 1.0]})
+        base = MARRuleConfig(
+            target_feature="target",
+            depends_on="driver",
+            rule_type="quantile_threshold",
+            params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7},
+        )
+
+        import pytest
+
+        for rate in (-0.1, 1.1):
+            with pytest.raises(ValueError):
+                inject_mar(X, base, target_rate=rate, seed=1)
+        for params in (
+            {"base_prob": 0.8, "max_prob": 0.5, "quantile_threshold": 0.7},
+            {"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 1.1},
+        ):
+            rule = MARRuleConfig("target", "driver", "quantile_threshold", params)
+            with pytest.raises(ValueError):
+                inject_mar(X, rule, target_rate=0.2, seed=1)
+
     def test_mar_other_features_unchanged(self) -> None:
         """Test that MAR only affects the target feature."""
-        X = pd.DataFrame({
-            "feature_a": np.random.randn(1000),
-            "feature_b": np.random.rand(1000),
-            "feature_c": np.random.randn(1000)
-        })
+        X = pd.DataFrame(
+            {
+                "feature_a": np.random.randn(1000),
+                "feature_b": np.random.rand(1000),
+                "feature_c": np.random.randn(1000),
+            }
+        )
 
         rule = MARRuleConfig(
             target_feature="feature_a",
             depends_on="feature_b",
             rule_type="quantile_threshold",
-            params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7}
+            params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7},
         )
         X_missing, _ = inject_mar(X, rule, target_rate=0.2, seed=42)
 
@@ -128,7 +167,7 @@ class TestMissingnessGrid:
                 target_feature=X.columns[0],
                 depends_on=X.columns[1],
                 rule_type="quantile_threshold",
-                params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7}
+                params={"base_prob": 0.05, "max_prob": 0.5, "quantile_threshold": 0.7},
             )
         }
 
