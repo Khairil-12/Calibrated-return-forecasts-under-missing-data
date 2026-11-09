@@ -80,6 +80,15 @@ git commit -m "feat: add exploration notebook"
 
 ---
 
+## Audit Addendum
+
+Confirmed gaps against PRD Sections 10.1-10.4 and 14.1:
+
+- Notebook tests only command execution; no outputs are saved or checked. Add deterministic synthetic/offline execution validation for required figures/tables and avoid requiring Yahoo Finance access during CI.
+- Baseline section omits required naive training-base-rate predictor and complete-data oracle comparison. Include both references alongside model calibration metrics.
+- Statistical design should expose variability across folds/seeds and paired-comparison method/effect-size/multiple-testing correction when results are available; keep notebook aligned with Task 10 outputs.
+- Resolve repository data/results paths independently of notebook launch cwd and handle absent downloaded data with an actionable setup path.
+
 ## Success Criteria
 
 - [ ] Notebook has all 5 sections
