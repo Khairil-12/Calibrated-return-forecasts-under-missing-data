@@ -85,6 +85,14 @@ git commit -m "feat: add data download script"
 
 ---
 
+## Audit Addendum
+
+Confirmed gaps against PRD Sections 12, 20.5, and 20.8:
+
+- `download_ohlcv` defaults to `data/raw`, but the script must not depend on current working directory for output location. Resolve repository paths from the script/package and explicitly write to `data/raw/`; add a test that invokes the entry point from another working directory.
+- Reproducibility requires recording data download date (and library versions) with experiment outputs; make download metadata available for Task 10 rather than printing it only.
+- Current plan calls for manual network-dependent verification only. Add offline tests for cached-data path, validation failure exit behavior, and output location.
+
 ## Success Criteria
 
 - [ ] Script runs without errors
