@@ -1,7 +1,7 @@
 """Feature engineering for CalibMiss with lookahead safety."""
 
 import numpy as np
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 
 
 def compute_features(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
