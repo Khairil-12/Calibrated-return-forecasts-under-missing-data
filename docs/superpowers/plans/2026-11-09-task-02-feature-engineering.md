@@ -15,6 +15,10 @@
 - **No lookahead bias:** Features computed using only data up to day t. Unit test enforces this.
 - **Code quality:** Type hints on public functions, docstrings, ruff linting, pytest tests, ≥70% coverage on features module.
 
+## Audit Gap: Input Ordering and Target Contract
+
+Sort observations chronologically within ticker before shifts and rolling calculations. Test that shuffled raw rows produce the same sorted features and targets, and assert the exact known zero-return target row is absent. Acceptance: chronological outputs are invariant to input row order and zero-return targets are excluded.
+
 ## Review Focus
 
 1. **Lookahead bias:** ANY feature computation using future data (t+1 or later) will invalidate ALL results. The lookahead test must catch this.
