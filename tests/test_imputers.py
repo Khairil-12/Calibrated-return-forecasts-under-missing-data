@@ -29,6 +29,92 @@ class TestForwardFillImputer:
         assert X_train_imp.loc[("AAPL", "2023-01-02"), "feat"] == 1.0
         assert X_train_imp.loc[("MSFT", "2023-01-02"), "feat"] == 10.0
 
+    def test_forward_fill_uses_training_median_for_leading_gaps(self) -> None:
+        train_idx = pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-01"), ("AAPL", "2023-01-02"),
+             ("MSFT", "2023-01-01"), ("MSFT", "2023-01-02")],
+            names=["ticker", "date"],
+        )
+        test_idx = pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-03"), ("AAPL", "2023-01-04"),
+             ("MSFT", "2023-01-03"), ("MSFT", "2023-01-04")],
+            names=["ticker", "date"],
+        )
+        X_train = pd.DataFrame({"feat": [2.0, 4.0, 10.0, 20.0]}, index=train_idx)
+        X_test = pd.DataFrame({"feat": [np.nan, 5.0, np.nan, 20.0]}, index=test_idx)
+
+        imputer = ForwardFillImputer().fit(X_train)
+        X_test_imp = imputer.transform(X_test)
+
+        assert X_test_imp.loc[("AAPL", "2023-01-03"), "feat"] == 3.0
+        assert X_test_imp.loc[("MSFT", "2023-01-03"), "feat"] == 15.0
+
+    def test_forward_fill_uses_global_training_median_for_unseen_ticker(self) -> None:
+        train_idx = pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-01"), ("AAPL", "2023-01-02"),
+             ("MSFT", "2023-01-01"), ("MSFT", "2023-01-02")],
+            names=["ticker", "date"],
+        )
+        test_idx = pd.MultiIndex.from_tuples(
+            [("NVDA", "2023-01-03"), ("NVDA", "2023-01-04")],
+            names=["ticker", "date"],
+        )
+        X_train = pd.DataFrame({"feat": [2.0, 4.0, 10.0, 20.0]}, index=train_idx)
+        X_test = pd.DataFrame({"feat": [np.nan, 100.0]}, index=test_idx)
+
+        X_test_imp = ForwardFillImputer().fit(X_train).transform(X_test)
+
+        assert X_test_imp.loc[("NVDA", "2023-01-03"), "feat"] == 7.0
+        assert X_test_imp.loc[("NVDA", "2023-01-04"), "feat"] == 100.0
+
+    def test_forward_fill_fallback_fit_on_train_only(self) -> None:
+        train_idx = pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-01"), ("AAPL", "2023-01-02")],
+            names=["ticker", "date"],
+        )
+        test_idx = pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-03"), ("AAPL", "2023-01-04")],
+            names=["ticker", "date"],
+        )
+        X_train = pd.DataFrame({"feat": [2.0, 4.0]}, index=train_idx)
+        X_test = pd.DataFrame({"feat": [np.nan, 1000.0]}, index=test_idx)
+        imputer = ForwardFillImputer().fit(X_train)
+        fitted_median = imputer.medians_["feat"]
+        fitted_ticker_median = imputer.ticker_medians_["feat"]["AAPL"]
+
+        X_test_imp = imputer.transform(X_test)
+
+        assert fitted_median == 3.0
+        assert fitted_ticker_median == 3.0
+        assert imputer.medians_["feat"] == fitted_median
+        assert imputer.ticker_medians_["feat"]["AAPL"] == fitted_ticker_median
+        assert X_test_imp.iloc[0, 0] == fitted_ticker_median
+        assert X_test_imp.iloc[1, 0] == 1000.0
+
+    def test_forward_fill_is_causal(self) -> None:
+        idx = pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-03"), ("AAPL", "2023-01-04"),
+             ("AAPL", "2023-01-05")],
+            names=["ticker", "date"],
+        )
+        X_train = pd.DataFrame({"feat": [2.0, 4.0]}, index=pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-01"), ("AAPL", "2023-01-02")],
+            names=["ticker", "date"],
+        ))
+        X_test = pd.DataFrame({"feat": [np.nan, 5.0, np.nan]}, index=idx)
+        X_later_changed = X_test.copy()
+        X_later_changed.iloc[2, 0] = 999.0
+        imputer = ForwardFillImputer().fit(X_train)
+
+        X_test_imp = imputer.transform(X_test)
+        X_later_changed_imp = imputer.transform(X_later_changed)
+
+        assert X_test_imp.iloc[0, 0] == 3.0
+        assert X_test_imp.iloc[1, 0] == 5.0
+        assert X_test_imp.iloc[0, 0] == X_later_changed_imp.iloc[0, 0]
+        assert X_test_imp.iloc[1, 0] == X_later_changed_imp.iloc[1, 0]
+        assert X_later_changed_imp.iloc[2, 0] == 999.0
+
 
 class TestMedianImputer:
     """Tests for MedianImputer."""
@@ -71,10 +157,12 @@ class TestIterativeImputerWrapper:
         imputer = IterativeImputerWrapper(max_iter=10, random_state=42)
         imputer.fit(X_train)
         X_train_imp = imputer.transform(X_train)
+        fitted_statistics = imputer.imputer.initial_imputer_.statistics_.copy()
         X_test_imp = imputer.transform(X_test)
 
         assert not X_train_imp.isna().any().any()
         assert not X_test_imp.isna().any().any()
+        np.testing.assert_array_equal(imputer.imputer.initial_imputer_.statistics_, fitted_statistics)
 
 
 class TestFitOnTrainOnly:
