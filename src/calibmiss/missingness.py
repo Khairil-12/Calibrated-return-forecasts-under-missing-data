@@ -10,17 +10,14 @@ import pandas as pd
 @dataclass
 class MARRuleConfig:
     """Configuration for MAR missingness rule."""
+
     target_feature: str
     depends_on: str
     rule_type: str
     params: dict[str, Any]
 
 
-def inject_mcar(
-    X: pd.DataFrame,
-    rate: float,
-    seed: int
-) -> tuple[pd.DataFrame, dict[str, float]]:
+def inject_mcar(X: pd.DataFrame, rate: float, seed: int) -> tuple[pd.DataFrame, dict[str, float]]:
     """Inject Missing Completely At Random (MCAR) missingness.
 
     Args:
@@ -50,10 +47,7 @@ def inject_mcar(
 
 
 def inject_mar(
-    X: pd.DataFrame,
-    rule: MARRuleConfig,
-    target_rate: float,
-    seed: int
+    X: pd.DataFrame, rule: MARRuleConfig, target_rate: float, seed: int
 ) -> tuple[pd.DataFrame, dict[str, float]]:
     """Inject Missing At Random (MAR) missingness based on observed variable.
 
@@ -72,6 +66,10 @@ def inject_mar(
     """
     if rule.rule_type != "quantile_threshold":
         raise ValueError(f"Unknown rule_type: {rule.rule_type}")
+    if not 0 <= target_rate <= 1 or not np.isfinite(target_rate):
+        raise ValueError("target_rate must be finite and between 0 and 1")
+    if X.empty:
+        raise ValueError("X must not be empty")
 
     if rule.target_feature not in X.columns:
         raise ValueError(f"Target feature {rule.target_feature} not in DataFrame")
@@ -86,36 +84,34 @@ def inject_mar(
     base_prob = rule.params.get("base_prob", 0.05)
     max_prob = rule.params.get("max_prob", 0.5)
     quantile_threshold = rule.params.get("quantile_threshold", 0.7)
+    if (
+        not np.isfinite(base_prob)
+        or not np.isfinite(max_prob)
+        or not 0 <= base_prob <= max_prob <= 1
+    ):
+        raise ValueError("base_prob and max_prob must satisfy 0 <= base_prob <= max_prob <= 1")
+    if not np.isfinite(quantile_threshold) or not 0 <= quantile_threshold <= 1:
+        raise ValueError("quantile_threshold must be finite and between 0 and 1")
 
-    # Get the observed variable
-    observed = X[rule.depends_on].values
-
-    # Compute threshold
+    observed = X[rule.depends_on].to_numpy()
+    if not np.isfinite(observed).all():
+        raise ValueError("depends_on values must be finite")
     threshold = np.quantile(observed, quantile_threshold)
-
-    # Compute missing probabilities
-    # High group: probability = max_prob
-    # Low group: probability = base_prob
     high_group = observed > threshold
-    probs = np.where(high_group, max_prob, base_prob)
-
-    # Calibrate to achieve target_rate
-    # We need to scale probs so that mean(probs) = target_rate
-    # Simple approach: adjust max_prob while keeping base_prob fixed
-    # Or adjust both proportionally
-    current_rate = probs.mean()
-    if current_rate > 0:
-        scale = target_rate / current_rate
-        probs = probs * scale
-        # Clip to [0, 1]
-        probs = np.clip(probs, 0, 1)
+    high_share = float(high_group.mean())
+    if target_rate in (0.0, 1.0) or high_share in (0.0, 1.0):
+        probs = np.full(len(X), target_rate)
+    else:
+        separation = min(target_rate / high_share, (1.0 - target_rate) / (1.0 - high_share))
+        low_prob = target_rate - high_share * separation
+        high_prob = target_rate + (1.0 - high_share) * separation
+        probs = np.where(high_group, high_prob, low_prob)
 
     # Generate missing mask
     missing_mask = rng.random(len(X)) < probs
 
     # Apply missingness only to target feature
-    target_idx = X.columns.get_loc(rule.target_feature)
-    X_missing.iloc[missing_mask, target_idx] = np.nan
+    X_missing[rule.target_feature] = X_missing[rule.target_feature].mask(missing_mask)
 
     # Compute realized missing rates per column
     realized = {}
@@ -130,7 +126,7 @@ def simulate_missingness_grid(
     mechanisms: list[str],
     rates: list[float],
     seeds: list[int],
-    mar_rules: dict[str, MARRuleConfig]
+    mar_rules: dict[str, MARRuleConfig],
 ) -> dict[str, dict[float, dict[int, tuple[pd.DataFrame, dict[str, float]]]]]:
     """Simulate missingness grid across all combinations.
 
