@@ -84,6 +84,14 @@ git commit -m "feat: add feature computation script"
 
 ---
 
+## Audit Addendum
+
+Confirmed gaps against PRD Sections 12, 20.5, and 20.8:
+
+- The example re-downloads data but does not explicitly consume the raw cache artifact under `data/raw/` or resolve paths independently of cwd. Load the project cache path and write processed Parquet files under repository `data/processed/`.
+- Add offline tests for loading cached OHLCV, preserving feature/target index alignment on disk round-trip, and invoking the script outside repository cwd.
+- Persist or expose source data date/version metadata needed by Task 10 reproducibility reporting.
+
 ## Success Criteria
 
 - [ ] Script runs without errors
