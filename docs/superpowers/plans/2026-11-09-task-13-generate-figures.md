@@ -140,6 +140,16 @@ git commit -m "feat: add figure generation script"
 
 ---
 
+## Audit Addendum
+
+Confirmed gaps against PRD Sections 10.3, 14.3, and 20.8:
+
+- The sample creates a 2×2 axes grid but indexes it as 2×3 (six panels), which raises an index error. Set layout dimensions to match two mechanisms by three calibrators.
+- Reliability diagrams are placeholders: CSV serialization and bin aggregation are unspecified, and the example never plots reliability data. Define a tested JSON round-trip schema for bins, aggregate counts/accuracies/confidences across folds/seeds, and plot actual points plus the diagonal.
+- Figure requirements specify reliability at 0% and 30%, Brier and ECE by imputer/calibrator/mechanism, and mean ECE heatmap. Test each expected output and include nonempty/sample input cases.
+- Make paths repository-root-relative and create output directory inside `main`; current example performs filesystem effects at import time and assumes cwd.
+- Handle one-class fold ROC AUC `NaN` in aggregate plotting without dropping valid Brier/ECE data.
+
 ## Success Criteria
 
 - [ ] Script runs without errors
