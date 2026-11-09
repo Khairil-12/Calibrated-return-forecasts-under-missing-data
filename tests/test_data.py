@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 from calibmiss.data import download_ohlcv, validate_ohlcv
 
 
@@ -39,18 +39,21 @@ class TestValidateOHLCV:
     def test_validate_data_catches_issues(self) -> None:
         """Test that validation catches duplicates, negative prices, negative volume."""
         # Valid data
-        idx = pd.MultiIndex.from_tuples([
-            ("AAPL", "2023-01-01"), ("AAPL", "2023-01-02")
-        ], names=["ticker", "date"])
+        idx = pd.MultiIndex.from_tuples(
+            [("AAPL", "2023-01-01"), ("AAPL", "2023-01-02")], names=["ticker", "date"]
+        )
 
-        df = pd.DataFrame({
-            "open": [100.0, 101.0],
-            "high": [102.0, 103.0],
-            "low": [99.0, 100.0],
-            "close": [101.0, 102.0],
-            "adj_close": [101.0, 102.0],
-            "volume": [1000, 2000]
-        }, index=idx)
+        df = pd.DataFrame(
+            {
+                "open": [100.0, 101.0],
+                "high": [102.0, 103.0],
+                "low": [99.0, 100.0],
+                "close": [101.0, 102.0],
+                "adj_close": [101.0, 102.0],
+                "volume": [1000, 2000],
+            },
+            index=idx,
+        )
 
         report = validate_ohlcv(df)
         assert report.is_valid
@@ -76,26 +79,77 @@ class TestValidateOHLCV:
         assert not report_negvol.is_valid
         assert any("volume" in e.lower() or "negative" in e.lower() for e in report_negvol.errors)
 
+    def test_corrupt_cache_payload_is_redownloaded(self, tmp_path: Path, monkeypatch) -> None:
+        import calibmiss.data as data_module
+
+        idx = pd.MultiIndex.from_tuples(
+            [("AAPL", pd.Timestamp("2023-01-03"))], names=["ticker", "date"]
+        )
+        downloaded = pd.DataFrame(
+            {
+                "open": [1.0],
+                "high": [2.0],
+                "low": [0.5],
+                "close": [1.5],
+                "adj_close": [1.5],
+                "volume": [100],
+            },
+            index=idx,
+        )
+        calls = 0
+
+        def fake_download(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return pd.DataFrame(
+                {
+                    "Open": [1.0],
+                    "High": [2.0],
+                    "Low": [0.5],
+                    "Close": [1.5],
+                    "Adj Close": [1.5],
+                    "Volume": [100],
+                },
+                index=pd.DatetimeIndex(["2023-01-03"], name="Date"),
+            )
+
+        monkeypatch.setattr(data_module.yf, "download", fake_download)
+        data_module.download_ohlcv(["AAPL"], "2023-01-01", "2023-01-31", tmp_path)
+        cached = next(tmp_path.glob("*.parquet"))
+        corrupted = pd.read_parquet(cached)
+        corrupted.loc[("AAPL", pd.Timestamp("2023-01-03")), "close"] = 999.0
+        corrupted.to_parquet(cached)
+
+        reloaded = data_module.download_ohlcv(["AAPL"], "2023-01-01", "2023-01-31", tmp_path)
+
+        assert calls == 2
+        pd.testing.assert_frame_equal(reloaded, downloaded)
+
 
 class TestValidationReport:
     """Tests for ValidationReport dataclass."""
 
     def test_validation_report_structure(self) -> None:
         """Test ValidationReport has correct fields."""
-        idx = pd.MultiIndex.from_tuples([
-            ("AAPL", "2023-01-01")
-        ], names=["ticker", "date"])
+        idx = pd.MultiIndex.from_tuples([("AAPL", "2023-01-01")], names=["ticker", "date"])
 
-        df = pd.DataFrame({
-            "open": [100.0], "high": [102.0], "low": [99.0],
-            "close": [101.0], "adj_close": [101.0], "volume": [1000]
-        }, index=idx)
+        df = pd.DataFrame(
+            {
+                "open": [100.0],
+                "high": [102.0],
+                "low": [99.0],
+                "close": [101.0],
+                "adj_close": [101.0],
+                "volume": [1000],
+            },
+            index=idx,
+        )
 
         report = validate_ohlcv(df)
 
-        assert hasattr(report, 'is_valid')
-        assert hasattr(report, 'errors')
-        assert hasattr(report, 'native_missing_rates')
+        assert hasattr(report, "is_valid")
+        assert hasattr(report, "errors")
+        assert hasattr(report, "native_missing_rates")
         assert isinstance(report.is_valid, bool)
         assert isinstance(report.errors, list)
         assert isinstance(report.native_missing_rates, dict)
