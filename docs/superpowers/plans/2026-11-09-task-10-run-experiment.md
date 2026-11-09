@@ -208,6 +208,19 @@ git commit -m "feat: add experiment grid runner with parallel execution"
 
 ---
 
+## Audit Addendum
+
+Confirmed gaps against PRD Sections 10.1-10.4, 11, 12, and 20.6-20.8:
+
+- Split generation receives the unique date axis, but returned indices are positions into dates, while `run_single_config` indexes feature rows. With multiple tickers per date, these positions select the wrong rows. Define ticker-aware fold mapping: each date window must map to all matching feature-row positions, while purge counts remain trading dates.
+- The CLI example passes split settings as keyword arguments to `get_split_indices`, whose API consumes a dates index and config mapping; it also assumes `SplitIndices` can unpack as a tuple. Use `dates` plus `cfg.experiment.splits.model_dump()` and pass named `train_idx`, `calibrate_idx`, `test_idx` fields.
+- Grid combinations carry model/imputer/calibrator config objects, but pipeline currently accepts only names and loads params separately. Make parameters authoritative from the supplied config so grid execution matches YAML and custom configs.
+- `run_grid` returns a DataFrame but does not save CSV; CSV writing and output directory creation belong to the runner, with a test for output path and required columns.
+- `args.rate or 0.1` and `args.seed or 42` replace valid zero values. Use explicit `is None` defaults.
+- PRD requires complete-data oracle and naive training-base-rate baselines in every results table; add baseline rows per fold/model/calibrator.
+- Preserve reliability data in CSV with an explicit JSON encoding and test round-trip parsing for Task 13.
+- Record library versions and data download date, and produce across-fold/seed metric dispersion plus paired significance tests/effect sizes with Holm or Benjamini-Hochberg correction, per PRD Sections 10.3 and 12.
+
 ## Success Criteria
 
 - [ ] Grid runs all 2×3×3×2×4×5×n_folds combinations
