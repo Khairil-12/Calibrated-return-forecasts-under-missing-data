@@ -27,16 +27,14 @@ def _get_cache_key(tickers: list[str], start: str, end: str) -> str:
 def _compute_sha256(df: pd.DataFrame) -> str:
     """Compute SHA256 hash of DataFrame serialized to parquet."""
     import io
+
     buffer = io.BytesIO()
     df.to_parquet(buffer)
     return hashlib.sha256(buffer.getvalue()).hexdigest()[:16]
 
 
 def download_ohlcv(
-    tickers: list[str],
-    start: str,
-    end: str,
-    cache_dir: str | Path = "data/raw"
+    tickers: list[str], start: str, end: str, cache_dir: str | Path = "data/raw"
 ) -> pd.DataFrame:
     """Download OHLCV data from Yahoo Finance with caching.
 
@@ -57,10 +55,11 @@ def download_ohlcv(
 
     # Check for existing cached file
     existing_files = list(cache_dir.glob(f"*_{cache_key}_sha256_*.parquet"))
-    if existing_files:
-        # Load from cache
-        df = pd.read_parquet(existing_files[0])
-        return df
+    for cache_path in existing_files:
+        df = pd.read_parquet(cache_path)
+        expected_sha256 = cache_path.stem.rsplit("_sha256_", 1)[1]
+        if _compute_sha256(df) == expected_sha256:
+            return df
 
     # Download from Yahoo Finance
     data = yf.download(
@@ -70,7 +69,7 @@ def download_ohlcv(
         group_by="ticker",
         auto_adjust=False,
         progress=False,
-        threads=True
+        threads=True,
     )
 
     if isinstance(data.columns, pd.MultiIndex):
@@ -103,7 +102,7 @@ def download_ohlcv(
         "Low": "low",
         "Close": "close",
         "Adj Close": "adj_close",
-        "Volume": "volume"
+        "Volume": "volume",
     }
     df = df.rename(columns=column_mapping)
 
@@ -161,8 +160,4 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
 
     is_valid = len(errors) == 0
 
-    return ValidationReport(
-        is_valid=is_valid,
-        errors=errors,
-        native_missing_rates=missing_rates
-    )
+    return ValidationReport(is_valid=is_valid, errors=errors, native_missing_rates=missing_rates)
