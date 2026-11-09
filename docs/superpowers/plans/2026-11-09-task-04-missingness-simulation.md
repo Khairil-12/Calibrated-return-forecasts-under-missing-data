@@ -15,6 +15,10 @@
 - **Seeds fixed:** All randomness controlled via config seeds.
 - **Verification:** Record realized missing rate per column; plot realized vs target.
 
+## Audit Gap: MAR Rate Calibration
+
+Calibrate low/high group probabilities so their weighted mean equals requested `target_rate` while preserving higher missingness for the observed-variable high group. Validate target rate, quantile, and probability parameters; reject non-finite/out-of-range inputs and empty data. Acceptance: requested attainable rates including 0 and 1 match expected missingness rates, dependence remains, and invalid configuration raises `ValueError`.
+
 ## Review Focus
 
 1. **MCAR correctness:** Each value independently missing with probability p.
