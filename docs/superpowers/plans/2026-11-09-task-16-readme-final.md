@@ -163,6 +163,17 @@ git commit -m "docs: add README and verify full pipeline"
 
 ---
 
+## Audit Addendum
+
+Confirmed gaps against PRD Sections 12, 14, 20.5-20.8:
+
+- README example assumes `requirements.txt`, but dependency source is `pyproject.toml`; `pre-commit install` and `make setup` must be checked against actual Makefile/project config before documenting.
+- `make all` claim needs a tested dependency order covering data download, feature generation, experiment, figures, report, and summary. Include network/data prerequisites and avoid claiming reproducibility until a clean offline/online path is verified.
+- README must explain generated metadata (data date and dependency versions), baseline references, uncertainty/statistics, and where the one-page summary lives.
+- Current verification criteria assert full-grid <2 hours without specifying representative hardware or recording measured runtime; define and report the environment and measured duration.
+- PRD's required output paths include `reports/summary.md`; ensure reproduction command generates it alongside `reports/report.pdf`.
+- Clean-clone test uses placeholder `<repo-url>` and `/tmp`, which is not portable to Windows. Use a local repository path and platform-neutral temporary directory handling.
+
 ## Success Criteria
 
 - [ ] README has clear reproduction instructions
