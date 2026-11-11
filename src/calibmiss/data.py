@@ -56,10 +56,13 @@ def download_ohlcv(
     # Check for existing cached file
     existing_files = list(cache_dir.glob(f"*_{cache_key}_sha256_*.parquet"))
     for cache_path in existing_files:
-        df = pd.read_parquet(cache_path)
-        expected_sha256 = cache_path.stem.rsplit("_sha256_", 1)[1]
-        if _compute_sha256(df) == expected_sha256:
-            return df
+        try:
+            df = pd.read_parquet(cache_path)
+            expected_sha256 = cache_path.stem.rsplit("_sha256_", 1)[1]
+            if _compute_sha256(df) == expected_sha256 and validate_ohlcv(df).is_valid:
+                return df
+        except (OSError, ValueError, KeyError, IndexError):
+            continue
 
     # Download from Yahoo Finance
     data = yf.download(
@@ -71,6 +74,8 @@ def download_ohlcv(
         progress=False,
         threads=True,
     )
+    if data.empty:
+        raise ValueError("OHLCV validation failed: OHLCV data is empty")
 
     if isinstance(data.columns, pd.MultiIndex):
         # Multiple tickers
@@ -112,6 +117,9 @@ def download_ohlcv(
 
     # Sort index
     df = df.sort_index()
+    report = validate_ohlcv(df)
+    if not report.is_valid:
+        raise ValueError("OHLCV validation failed: " + "; ".join(report.errors))
 
     # Save to cache with timestamp and SHA256
     timestamp = int(time.time())
@@ -133,6 +141,9 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
         ValidationReport with validation results
     """
     errors = []
+
+    if df.empty:
+        errors.append("OHLCV data is empty")
 
     # Check for duplicate (ticker, date) rows
     if df.index.duplicated().any():
