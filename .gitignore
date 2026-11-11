@@ -29,6 +29,7 @@ wheels/
 # Virtual environments
 .venv/
 venv/
+venv_calibmiss/
 ENV/
 env/
 
@@ -64,3 +65,8 @@ dmypy.json
 
 # Local config (if any)
 config/local.yaml
+
+# AI Assistant configs
+.claude/
+.agents/
+AGENTS.md
