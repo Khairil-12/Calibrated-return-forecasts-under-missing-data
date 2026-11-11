@@ -22,6 +22,7 @@ def run_single_config(
     cal_idx: NDArray[np.int_],
     test_idx: NDArray[np.int_],
     config: dict[str, Any],
+    experiment_config: Any = None,
 ) -> dict[str, Any]:
     """Run a single configured experiment and return test metrics with metadata."""
     X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
@@ -34,13 +35,18 @@ def run_single_config(
     config_dir = Path(__file__).resolve().parents[2] / "config"
     if mechanism not in ("MCAR", "MAR"):
         raise ValueError(f"Unknown mechanism: {mechanism}")
+    experiment = (experiment_config or get_config(config_dir)).experiment
     if rate > 0:
         if mechanism == "MCAR":
             X_train, _ = inject_mcar(X_train, rate, seed)
             X_cal, _ = inject_mcar(X_cal, rate, seed + 1)
             X_test, _ = inject_mcar(X_test, rate, seed + 2)
         elif mechanism == "MAR":
-            rules = get_mar_rules(config_dir)
+            rules = (
+                experiment_config.mar_rules
+                if experiment_config is not None and hasattr(experiment_config, "mar_rules")
+                else get_mar_rules(config_dir)
+            )
             rule_cfg = rules.mar_rules[0]
             rule = MARRuleConfig(
                 target_feature=rule_cfg.target_feature,
@@ -54,25 +60,35 @@ def run_single_config(
         else:
             raise ValueError(f"Unknown mechanism: {mechanism}")
 
-    experiment = get_config(config_dir).experiment
-    imputer_params = next(
-        item.params for item in experiment.imputers if item.name == config["imputer"]
-    )
+    imputer_params = config.get("imputer_params")
+    if imputer_params is None:
+        imputer_params = next(
+            (item.params for item in experiment.imputers if item.name == config["imputer"]),
+            {},
+        )
     imputer = get_imputer(ImputerConfig(name=str(config["imputer"]), params=imputer_params))
     imputer.fit(X_train)
     X_train = imputer.transform(X_train)
     X_cal = imputer.transform(X_cal)
     X_test = imputer.transform(X_test)
 
-    model_params = next(item.params for item in experiment.models if item.name == config["model"])
+    model_params = config.get("model_params")
+    if model_params is None:
+        model_params = next(
+            (item.params for item in experiment.models if item.name == config["model"]),
+            {},
+        )
     model = get_model(ModelConfig(name=str(config["model"]), params=model_params))
     model.fit(X_train, y_train)
 
     p_cal = model.predict_proba(X_cal)
     p_test = model.predict_proba(X_test)
-    calibrator_params = next(
-        item.params for item in experiment.calibrators if item.name == config["calibrator"]
-    )
+    calibrator_params = config.get("calibrator_params")
+    if calibrator_params is None:
+        calibrator_params = next(
+            (item.params for item in experiment.calibrators if item.name == config["calibrator"]),
+            {},
+        )
     calibrator = get_calibrator(
         CalibratorConfig(name=str(config["calibrator"]), params=calibrator_params)
     )

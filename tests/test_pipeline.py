@@ -65,3 +65,13 @@ def test_mar_missingness_uses_configured_rule() -> None:
 
     assert result["mechanism"] == "MAR"
     assert np.isfinite(result["brier"])
+
+
+def test_explicit_model_params_override_yaml() -> None:
+    X, y, train, cal, test = make_data()
+    config = make_config(rate=0.0)
+    config["model_params"] = {"C": 0.01, "max_iter": 1000, "class_weight": None}
+
+    result = run_single_config(X, y, train, cal, test, config)
+
+    assert np.isfinite(result["brier"])
