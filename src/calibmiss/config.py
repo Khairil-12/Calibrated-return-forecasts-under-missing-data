@@ -96,9 +96,6 @@ class Config(BaseModel):
     experiment: ExperimentConfig
 
 
-_config: Config | None = None
-
-
 def get_config(
     config_dir: str | Path = "config", experiment_file: str = "experiment.yaml"
 ) -> Config:
@@ -111,10 +108,6 @@ def get_config(
     Returns:
         Config object with all settings.
     """
-    global _config
-    if _config is not None:
-        return _config
-
     config_path = Path(config_dir)
 
     # Load universe config
@@ -147,6 +140,4 @@ def get_mar_rules(config_dir: str | Path = "config") -> MissingnessRulesConfig:
 
 
 def reset_config() -> None:
-    """Reset cached config (mainly for testing)."""
-    global _config
-    _config = None
+    """No-op retained for test fixtures; config is loaded fresh on each call."""
