@@ -53,3 +53,15 @@ def test_get_model_returns_configured_model() -> None:
 def test_get_model_rejects_unknown_name() -> None:
     with pytest.raises(ValueError, match="Unknown model: other"):
         get_model(ModelConfig(name="other"))
+
+
+def test_logistic_regression_class_weight_default_is_none() -> None:
+    """class_weight default must be None, not 'balanced'.
+
+    'balanced' skews predicted probabilities toward 0.5, which Platt scaling
+    then appears to 'correct' — creating an ECE artifact. The grid runs must
+    use no class weighting by default.
+    """
+    model = LogisticRegressionModel()
+    # LogisticRegressionModel exposes model.class_weight via the wrapped model
+    assert model.model.class_weight is None

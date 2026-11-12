@@ -19,7 +19,7 @@ class LogisticRegressionModel:
         self,
         C: float = 1.0,
         max_iter: int = 1000,
-        class_weight: str | dict[int, float] | None = "balanced",
+        class_weight: str | dict[int, float] | None = None,
         **kwargs: Any,
     ) -> None:
         self.model = LogisticRegression(
