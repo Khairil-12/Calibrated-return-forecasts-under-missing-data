@@ -77,6 +77,33 @@ def test_mar_rejects_non_finite_depends_on_column_before_injection() -> None:
         run_single_config(X, y, train, cal, test, config)
 
 
+def test_mar_pipeline_uses_train_threshold_for_all_splits(monkeypatch) -> None:
+    """The MAR quantile threshold must be computed from the train split and
+    reused for calibrate and test, so test-time missingness does not depend
+    on the test split's own distribution."""
+    import calibmiss.pipeline as pipeline_module
+    from calibmiss.missingness import inject_mar as real_inject_mar
+
+    X, y, train, cal, test = make_data()
+    config = make_config()
+    config["mechanism"] = "MAR"
+
+    recorded: list[float | None] = []
+
+    def spy(X_frame, rule, target_rate, seed, depends_on_threshold=None):
+        recorded.append(depends_on_threshold)
+        return real_inject_mar(X_frame, rule, target_rate, seed, depends_on_threshold)
+
+    monkeypatch.setattr(pipeline_module, "inject_mar", spy)
+    run_single_config(X, y, train, cal, test, config)
+
+    assert len(recorded) == 3
+    assert all(t is not None for t in recorded)
+    assert len(set(recorded)) == 1
+    expected = float(np.quantile(X.iloc[train]["volume_ratio"].to_numpy(), 0.7))
+    assert recorded[0] == pytest.approx(expected)
+
+
 def test_explicit_model_params_override_yaml() -> None:
     X, y, train, cal, test = make_data()
     config = make_config(rate=0.0)

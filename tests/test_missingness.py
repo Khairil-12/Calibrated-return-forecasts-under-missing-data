@@ -128,6 +128,33 @@ class TestMAR:
             with pytest.raises(ValueError):
                 inject_mar(X, rule, target_rate=0.2, seed=1)
 
+    def test_mar_accepts_precomputed_threshold(self) -> None:
+        """Passing depends_on_threshold must override the quantile of the passed data.
+
+        With a threshold far above every driver value, high_group is empty and
+        the per-split quantile path would have produced a different split of
+        the data. The realized rates prove the supplied threshold was used.
+        """
+        X = pd.DataFrame({"target": np.random.randn(20000), "driver": np.random.rand(20000)})
+        rule = MARRuleConfig(
+            target_feature="target",
+            depends_on="driver",
+            rule_type="quantile_threshold",
+            params={"quantile_threshold": 0.7},
+        )
+
+        # Threshold above all driver values: high group empty -> probs = target_rate
+        masked, realized = inject_mar(
+            X, rule, target_rate=0.2, seed=42, depends_on_threshold=2.0
+        )
+        assert abs(realized["target"] - 0.2) < 0.02
+
+        # Threshold below all driver values: everyone in high group, same probs
+        masked_low, realized_low = inject_mar(
+            X, rule, target_rate=0.2, seed=42, depends_on_threshold=-1.0
+        )
+        assert abs(realized_low["target"] - 0.2) < 0.02
+
     def test_mar_other_features_unchanged(self) -> None:
         """Test that MAR only affects the target feature."""
         X = pd.DataFrame(

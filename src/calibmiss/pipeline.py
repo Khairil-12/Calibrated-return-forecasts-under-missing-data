@@ -63,9 +63,17 @@ def run_single_config(
                             f"value(s) in the {label} split (rows: {list(bad.index[:5])}); "
                             "drop warmup rows before injecting missingness"
                         )
-            X_train, _ = inject_mar(X_train, rule, rate, seed)
-            X_cal, _ = inject_mar(X_cal, rule, rate, seed + 1)
-            X_test, _ = inject_mar(X_test, rule, rate, seed + 2)
+            quantile = float(rule.params.get("quantile_threshold", 0.7))
+            mar_threshold = float(
+                np.quantile(X_train[rule.depends_on].to_numpy(), quantile)
+            )
+            X_train, _ = inject_mar(X_train, rule, rate, seed, depends_on_threshold=mar_threshold)
+            X_cal, _ = inject_mar(
+                X_cal, rule, rate, seed + 1, depends_on_threshold=mar_threshold
+            )
+            X_test, _ = inject_mar(
+                X_test, rule, rate, seed + 2, depends_on_threshold=mar_threshold
+            )
         else:
             raise ValueError(f"Unknown mechanism: {mechanism}")
 

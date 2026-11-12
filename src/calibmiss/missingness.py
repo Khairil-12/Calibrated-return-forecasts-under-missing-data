@@ -47,7 +47,11 @@ def inject_mcar(X: pd.DataFrame, rate: float, seed: int) -> tuple[pd.DataFrame, 
 
 
 def inject_mar(
-    X: pd.DataFrame, rule: MARRuleConfig, target_rate: float, seed: int
+    X: pd.DataFrame,
+    rule: MARRuleConfig,
+    target_rate: float,
+    seed: int,
+    depends_on_threshold: float | None = None,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
     """Inject Missing At Random (MAR) missingness based on observed variable.
 
@@ -60,6 +64,10 @@ def inject_mar(
         rule: MAR rule configuration
         target_rate: Target missing rate for target_feature (0 to 1)
         seed: Random seed for reproducibility
+        depends_on_threshold: Pre-computed threshold for the depends_on column.
+            Pass the training-split threshold so calibrate/test missingness does
+            not depend on each split's own distribution. If None, computed from
+            this frame's quantile.
 
     Returns:
         Tuple of (DataFrame with NaN, dict of realized missing rates per column)
@@ -96,7 +104,11 @@ def inject_mar(
     observed = X[rule.depends_on].to_numpy()
     if not np.isfinite(observed).all():
         raise ValueError("depends_on values must be finite")
-    threshold = np.quantile(observed, quantile_threshold)
+    threshold = (
+        float(depends_on_threshold)
+        if depends_on_threshold is not None
+        else float(np.quantile(observed, quantile_threshold))
+    )
     high_group = observed > threshold
     high_share = float(high_group.mean())
     if target_rate in (0.0, 1.0) or high_share in (0.0, 1.0):
