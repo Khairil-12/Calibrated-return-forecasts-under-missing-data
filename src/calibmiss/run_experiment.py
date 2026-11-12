@@ -407,12 +407,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     cfg = get_config(ROOT / "config", experiment_file=args.experiment_config)
-    output_dir = args.output_dir or (
-        RESULTS / "volatility" if args.experiment_config != "experiment.yaml" else RESULTS
-    )
-    X, y, download_date = _load_data(
-        cfg, volatility_target=(args.experiment_config != "experiment.yaml")
-    )
+    volatility_mode = cfg.experiment.target == "volatility"
+    output_dir = args.output_dir or (RESULTS / "volatility" if volatility_mode else RESULTS)
+    X, y, download_date = _load_data(cfg, volatility_target=volatility_mode)
     dates = X.index.get_level_values("date").unique().sort_values()
     date_splits = get_split_indices(dates, cfg.experiment.splits.model_dump())
     splits = map_date_splits_to_rows(X, date_splits)
@@ -450,7 +447,7 @@ def main(argv: list[str] | None = None) -> None:
         cfg,
         n_jobs=args.n_jobs,
         output_path=output_dir / "metrics.csv",
-        volatility_target=(args.experiment_config != "experiment.yaml"),
+        volatility_target=volatility_mode,
     )
     print(f"Saved {len(frame)} rows to {output_dir / 'metrics.csv'}")
 

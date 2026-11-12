@@ -286,6 +286,7 @@ def test_main_preserves_zero_rate_and_seed(monkeypatch) -> None:
 
 def test_main_volatility_config_writes_to_separate_dir(tmp_path: Path, monkeypatch) -> None:
     cfg = tiny_config()
+    cfg.experiment.target = "volatility"
     X, y, splits = make_data()
     seen: dict[str, Path] = {}
 
@@ -332,3 +333,32 @@ def test_write_metadata_records_package_versions(tmp_path: Path) -> None:
     assert {"numpy", "pandas", "scikit-learn", "lightgbm", "yfinance", "joblib"} <= set(
         metadata["packages"]
     )
+
+
+def test_target_field_drives_volatility_mode(tmp_path: Path, monkeypatch) -> None:
+    cfg = tiny_config()
+    cfg.experiment.target = "volatility"
+    X, y, splits = make_data()
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "calibmiss.run_experiment.get_config", lambda path, experiment_file="experiment.yaml": cfg
+    )
+    monkeypatch.setattr(
+        "calibmiss.run_experiment._load_data",
+        lambda config, volatility_target=False: seen.update(vol=volatility_target)
+        or (X, y, "2026-11-12"),
+    )
+    monkeypatch.setattr("calibmiss.run_experiment.get_split_indices", lambda dates, config: splits)
+    monkeypatch.setattr("calibmiss.run_experiment.write_run_metadata", lambda *a, **k: None)
+
+    def fake_run_grid(X, y, splits, config, n_jobs, output_path, volatility_target=False):
+        seen["grid_vol"] = volatility_target
+        return pd.DataFrame([{"row_type": "experiment"}])
+
+    monkeypatch.setattr("calibmiss.run_experiment.run_grid", fake_run_grid)
+
+    main(["--experiment-config", "experiment_volatility.yaml"])
+
+    assert seen["vol"] is True
+    assert seen["grid_vol"] is True

@@ -71,6 +71,7 @@ class ExperimentConfig(BaseModel):
     missingness: MissingnessConfig
     splits: SplitsConfig
     evaluation: EvaluationConfig
+    target: str = "direction"
 
 
 class MARRuleConfig(BaseModel):

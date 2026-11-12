@@ -1,4 +1,5 @@
 experiment:
+  target: "volatility"
   models:
     - name: "logistic_regression"
       params:
@@ -44,7 +45,7 @@ experiment:
     calibrate_months: 6
     test_months: 6
     roll_forward_months: 6
-    purge_days: 5
+    purge_days: 60
 
   evaluation:
     n_bins_ece: 10
