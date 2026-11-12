@@ -91,11 +91,19 @@ def _persistence_row(
     fold: int,
     cfg: Config,
 ) -> dict[str, Any]:
-    """Persistence baseline: probability = volatility_5d at day t."""
+    """Persistence baseline: probability = volatility_5d at day t.
+
+    Raw volatility is an annualized std (can exceed 1), so it is mapped to a
+    probability via its training-fold ECDF rank — monotone in today's vol, in
+    [0,1], fit on train rows only.
+    """
     vol_col = "volatility_5d"
     if vol_col not in X.columns:
         raise ValueError(f"Persistence requires feature column '{vol_col}'")
-    test_probs = X.iloc[split.test_idx][vol_col].to_numpy()
+    train_scores = X.iloc[split.train_idx][vol_col].to_numpy()
+    test_scores = X.iloc[split.test_idx][vol_col].to_numpy()
+    sorted_scores = np.sort(train_scores)
+    test_probs = np.searchsorted(sorted_scores, test_scores, side="right") / len(sorted_scores)
     test_y = y.iloc[split.test_idx].to_numpy()
     result = compute_metrics(test_y, test_probs, n_bins=cfg.experiment.evaluation.n_bins_ece)
     return {
