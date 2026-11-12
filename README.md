@@ -187,6 +187,7 @@ The test suite enforces:
 ## Limitations and Scope
 
 - Daily equity data for 30 large-cap U.S. stocks; findings may not generalize to intraday frequencies or alternative asset classes.
+- The universe was selected from today's large caps and carries survivorship bias: delisted or failed tickers are absent, and current constituents are known with hindsight (META did not trade until May 2012).
 - Next-day direction has essentially no predictable signal here (ROC AUC ≈ 0.5), so missingness-degradation results are uninformative. A target with real signal is needed to test whether missingness harms calibration.
 - Walk-forward folds overlap in time and seeds share the same underlying data, so paired tests treat dependent observations as independent and overstate significance. Effect sizes (~0.005 Brier) matter more than the corrected p-values.
 - The iterative (MICE) imputer does not converge at `max_iter: 10`; those results are approximate.

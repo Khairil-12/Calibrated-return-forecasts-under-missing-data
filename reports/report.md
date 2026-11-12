@@ -134,6 +134,7 @@ The missingness dimension is inconclusive for the reason given above, and that c
 ## Limitations
 
 - The universe contains 30 configured U.S. equities and daily observations; findings may not generalize to other assets, markets, frequencies, or regimes.
+- The universe was selected in 2026 from today's large caps, so it carries survivorship bias: tickers that failed or were delisted between 2010 and 2024 are absent, and current constituents (e.g. NVDA, META, TSLA) are known with hindsight. META did not begin trading until May 2012; its pre-2012 rows simply do not exist in the downloaded data. Results describe calibration behavior for this survived set only.
 - The target carries essentially no predictable signal (ROC AUC ≈ 0.5), so the study cannot measure how missingness degrades a working predictor. Research question 1 needs a target with real signal, such as realized volatility.
 - Walk-forward folds overlap in calendar time and the five seeds share the same underlying observations, so the paired Wilcoxon tests treat dependent observations as independent. The Holm-corrected p-values overstate the evidence; the effect sizes (~0.005 Brier) are the trustworthy summary.
 - The iterative (MICE) imputer emits a convergence warning at `max_iter: 10` and does not reach its stopping criterion. Its rows completed, but the imputed values are approximate.
