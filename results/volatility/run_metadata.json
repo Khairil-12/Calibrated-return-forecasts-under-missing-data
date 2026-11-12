@@ -1,0 +1,18 @@
+{
+  "download_date": "2026-11-11",
+  "generated_at_utc": "2026-11-12T16:17:20.949899+00:00",
+  "python_version": "3.12.6",
+  "packages": {
+    "numpy": "1.26.4",
+    "pandas": "2.2.2",
+    "scikit-learn": "1.5.0",
+    "lightgbm": "4.3.0",
+    "yfinance": "1.8.0",
+    "joblib": "1.4.2",
+    "scipy": "1.17.1",
+    "matplotlib": "3.8.4",
+    "seaborn": "0.13.2",
+    "pydantic": "2.7.4",
+    "PyYAML": "6.0.1"
+  }
+}

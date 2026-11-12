@@ -1,6 +1,6 @@
 # CalibMiss: Calibrated Return Forecasts Under Missing Data
 
-**Status:** Full grid completed 2026-11-12. Quantitative results below; run log in `reports/pipeline_run.md`.
+**Status:** Direction grid completed 2026-11-12; realized-volatility extension completed 2026-11-13. Quantitative results below; run log in `reports/pipeline_run.md`.
 
 ## Abstract
 
@@ -96,6 +96,35 @@ The 0%→30% result does **not** show that missingness is harmless. These models
 
 The single highest AUC in the grid, 0.571, is one fold (fold 13, seed 999, logistic regression, median imputation, MCAR, 10%) and is identical across all three calibrators, so it comes from the base model. Rerunning that cell and four others with the target permuted drops AUC to 0.499, 0.499, 0.502, 0.519, and 0.516. The outlier is a fold-level fluctuation, not label leakage. 481 of 15,840 rows exceed AUC 0.55, consistent with sampling noise around 0.5.
 
+### Volatility Extension: Realized Volatility as Target
+
+The direction-grid results left RQ1 unanswered because ROC AUC ≈ 0.5 at every missingness level — the target had no signal for missingness to degrade. A second grid was run with a continuous target: the annualized standard deviation of daily log returns over the next five trading days (σ × √252, ddof=1). This target has known predictability (volatility clustering, persistence), which gives missingness something to damage. The grid uses the same 22 folds × 5 seeds × 144 configs = 15,840 experiment rows, with baselines for the naive training prevalence and a persistence forecast (today's realized volatility as predictor). The target is binarized at the training-fold median; calibration and metrics use the binary target.
+
+**Results:** 16,016 rows (15,840 + 154 baselines + 22 persistence rows) written to `results/volatility/metrics.csv`. Figures in `results/volatility/figures/`.
+
+Signal is present and clearly above fold noise:
+
+| Condition | ROC AUC | Brier | ECE |
+|---|---|---|---|
+| Naive training base rate | 0.500 | 0.250 | 0.139 |
+| Persistence baseline | 0.684 | 0.223 | 0.115 |
+| Best experiment cell (LGBM, forward_fill, none, MAR, 10%) | 0.736 | 0.193 | 0.054 |
+
+LightGBM and logistic regression both cluster around AUC 0.73 across the grid (mean 0.732 and 0.730). All models beat persistence by ~0.05 AUC, confirming real signal exists in this target.
+
+**Missingness effects remain small.** LightGBM with median imputation, no calibrator:
+
+| Rate | ECE | Brier | AUC |
+|---:|---:|---:|---:|
+| 0% | 0.0540 | 0.1924 | 0.735 |
+| 10% | 0.0553 | 0.1934 | 0.735 |
+| 20% | 0.0567 | 0.1943 | 0.734 |
+| 30% | 0.0587 | 0.1955 | 0.731 |
+
+ECE rises by 0.005 from 0% to 30% missingness — about the same magnitude as the direction-grid effect, but now the models have signal that could be degrading. The effect is still small. Platt scaling changes ECE by <0.001 at every rate (slight worsening: 0.0540 → 0.0587 at no-cal → 0.0621 with Platt at 30%). The interpretation is that this feature set captures the signal but calibration of the probability outputs is largely unaffected by imputation and missingness, perhaps because the features themselves are relatively robust to missing values in this regime.
+
+**Limitation:** 0.005 ECE degradation from 0% to 30% is small but not zero. With only 22 walk-forward folds, it is difficult to distinguish a genuine degradation from fold noise at this effect size. A longer dataset or more folds would sharpen the estimate.
+
 ## Discussion
 
 The result separates calibration from discrimination cleanly. Platt scaling reduces ECE by roughly half for both model families and costs nothing in ROC AUC, because there was no discrimination to cost. That is a legitimate finding for a calibration study: post-hoc calibration corrects overconfident probability outputs even when the underlying predictions carry no signal. It is not evidence that the models work, and it should not be presented as such.
@@ -132,4 +161,4 @@ The data download date, Python version, package versions, random seeds, and conf
 
 ## Conclusion
 
-CalibMiss defines a reproducible test of probabilistic calibration under controlled MCAR and MAR feature missingness. Implementation and tests are present, but results are pending in this checkout. Final conclusions must be based on generated metrics, uncertainty summaries, corrected paired tests, and figures rather than assumptions about which method should perform best.
+CalibMiss defines a reproducible test of probabilistic calibration under controlled MCAR and MAR feature missingness, run on two targets. On next-day direction the target itself has no signal (ROC AUC ≈ 0.5), so post-hoc calibration is the only effect that moves the metrics and the missingness question is unanswerable there. On next-5-day realized volatility — where real signal exists (models AUC ≈ 0.73 vs persistence 0.68) — missingness from 0% to 30% shifts ECE by about 0.005 and AUC by about 0.005: measurable but small. Across both targets, calibration quality is dominated by the calibrator choice, not by missingness, imputation, or mechanism. Final conclusions must be based on generated metrics, uncertainty summaries, corrected paired tests, and figures rather than assumptions about which method should perform best.

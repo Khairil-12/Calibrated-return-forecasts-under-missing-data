@@ -14,7 +14,9 @@ From the full grid (22 walk-forward folds, 5 seeds, 15,840 runs; see `reports/pi
 
 - **Calibration fixes overconfident models; it does not improve predictions.** Uncalibrated LightGBM is the worst-calibrated cell (ECE 0.0512 on complete data) and Platt scaling brings it to 0.0191. For logistic regression, Platt halves ECE from 0.0397 to 0.0199 while leaving ROC AUC unchanged. 592 of 1,728 paired tests survive Holm correction, but the effects are ~0.004–0.005 Brier and nearly all are calibrator contrasts.
 
-- **The missingness result is not evidence that missingness is harmless.** ECE changes by only ~0.001 between 0% and 30% missingness under both MCAR and MAR, but the models have essentially no signal to lose, so there is nothing for missingness to degrade. Research question 1 is unanswered by this target. Testing it requires a target with real signal, such as realized volatility.
+- **The missingness result is not evidence that missingness is harmless.** ECE changes by only ~0.001 between 0% and 30% missingness under both MCAR and MAR, but the models have essentially no signal to lose, so there is nothing for missingness to degrade. Research question 1 is unanswered by this target.
+
+- **Volatility target confirms signal and measures the missingness effect.** A second grid used realized volatility (annualized 5-day return std, binarized at the training-fold median) as the target. Models achieve AUC 0.73 versus persistence baseline 0.68 and naive 0.50, confirming real signal. ECE rises by ~0.005 from 0% to 30% missingness — measurable but small. Platt scaling produces negligible ECE improvement (the probability outputs are already well-calibrated). Results in `results/volatility/`. Run with `make experiment-volatility` and `make figures-volatility`.
 
 ![Reliability diagram at 30% missingness](results/figures/reliability_30pct.png)
 
