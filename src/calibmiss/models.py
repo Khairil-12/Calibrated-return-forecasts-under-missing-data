@@ -42,7 +42,8 @@ class LightGBMModel:
     """LightGBM binary classifier."""
 
     def __init__(self, **kwargs: Any) -> None:
-        self.model = LGBMClassifier(**kwargs)
+        params = {"n_jobs": 1, **kwargs}
+        self.model = LGBMClassifier(**params)
 
     def fit(self, X: pd.DataFrame, y: pd.Series) -> "LightGBMModel":
         self.model.fit(X, y)

@@ -41,6 +41,9 @@ def main() -> None:
         raise ValueError("Raw OHLCV validation failed: " + "; ".join(report.errors))
 
     features, target = compute_features(raw)
+    valid_features = ~features.isna().any(axis=1)
+    features = features[valid_features]
+    target = target[valid_features]
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     features.to_parquet(PROCESSED_DIR / "features.parquet")
     target.rename("target").to_frame().to_parquet(PROCESSED_DIR / "target.parquet")

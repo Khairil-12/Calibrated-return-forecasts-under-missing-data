@@ -2,7 +2,6 @@
 data/raw/
 data/processed/
 results/metrics.csv
-results/figures/
 
 # Python
 __pycache__/

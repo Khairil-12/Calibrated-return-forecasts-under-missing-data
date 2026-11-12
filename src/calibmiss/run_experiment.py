@@ -4,9 +4,12 @@ import argparse
 import importlib.metadata
 import itertools
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 4))
 
 import numpy as np
 import pandas as pd
@@ -171,7 +174,7 @@ def run_grid(
         )
         return {**result, "row_type": "experiment", "baseline": None, "fold": fold}
 
-    results = Parallel(n_jobs=n_jobs)(delayed(run_one)(combo) for combo in combinations)
+    results = Parallel(n_jobs=n_jobs, verbose=10)(delayed(run_one)(combo) for combo in combinations)
     for fold, split in enumerate(splits):
         results.extend(_baseline_rows(X, y, split, fold, cfg))
     frame = pd.DataFrame(results)
@@ -310,6 +313,9 @@ def _load_data(cfg: Config) -> tuple[pd.DataFrame, pd.Series, str]:
         cache_dir=raw_dir,
     )
     X, y = compute_features(raw)
+    valid_rows = ~X.isna().any(axis=1)
+    X = X[valid_rows]
+    y = y[valid_rows]
     key = f"{'_'.join(sorted(cfg.universe.tickers))}_{cfg.universe.start_date}_{cfg.universe.end_date}_sha256_"
     cache_files = list(raw_dir.glob(f"*_{key}*.parquet"))
     download_timestamp = max(int(path.name.split("_", 1)[0]) for path in cache_files)

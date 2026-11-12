@@ -1,12 +1,12 @@
 # CalibMiss: Calibrated Return Forecasts Under Missing Data
 
-**Status:** Methods and implementation draft; quantitative results pending the configured data download and experiment run.
+**Status:** Full grid completed 2026-11-12. Quantitative results below; run log in `reports/pipeline_run.md`.
 
 ## Abstract
 
 CalibMiss studies whether probabilistic next-day stock-direction forecasts remain calibrated when feature values are missing. It compares missing-completely-at-random (MCAR) and missing-at-random (MAR) mechanisms across missingness rates, model families, imputers, and post-hoc calibrators. The primary outcomes are Brier score, expected calibration error (ECE), and reliability diagrams; ROC AUC is secondary. The repository contains a deterministic, cached data pipeline, feature construction, missingness simulation, train-only imputation, calibration on a held-out split, walk-forward evaluation, statistical summaries, and figure generation.
 
-Results are pending: `results/metrics.csv` and generated figures are not present in this checkout. No empirical claim is made here until `make data`, `make features`, `make experiment`, and `make figures` have completed successfully.
+The configured grid has been run: 15,840 experiment rows across 22 walk-forward folds and 5 seeds, with figures in `results/figures/`. The central result is that next-day direction is not predictable from these features (ROC AUC ≈ 0.5, no model beats the naive base rate), so post-hoc calibration corrects overconfident probabilities but missingness has no signal to degrade.
 
 ## Introduction
 
@@ -20,7 +20,7 @@ This is a calibration study, not a trading strategy. Profitability, live executi
 
 ## Data
 
-Daily OHLCV data is sourced from Yahoo Finance through `yfinance`. The frozen universe and date range are recorded in `config/universe.yaml`: 32 configured U.S. large-cap tickers, from 2010-01-01 through 2024-12-31. Raw files are cached as Parquet with a timestamp and truncated SHA256 checksum in the filename.
+Daily OHLCV data is sourced from Yahoo Finance through `yfinance`. The frozen universe and date range are recorded in `config/universe.yaml`: 30 configured U.S. large-cap tickers, from 2010-01-01 through 2024-12-31. Raw files are cached as Parquet with a timestamp and truncated SHA256 checksum in the filename.
 
 The data validator checks duplicate `(ticker, date)` rows, positive prices, non-negative volume, and native missingness by column. Native source missingness is reported separately from controlled missingness injected after feature construction.
 
@@ -69,44 +69,52 @@ Primary comparisons should use identical fold, seed, model, mechanism, and rate 
 
 ## Results
 
-### Availability
+The full grid ran on 2026-11-12: 22 walk-forward folds, 5 seeds, 15,840 experiment rows plus 154 baseline rows (`results/metrics.csv`). Figures are in `results/figures/`. The run log is `reports/pipeline_run.md`.
 
-Results are pending. The expected inputs are:
+### Headline
 
-- `results/metrics.csv`
-- `results/summary.csv`
-- `results/statistical_tests.csv`
-- `results/run_metadata.json`
-- `results/figures/brier_vs_missingness.png`
-- `results/figures/ece_vs_missingness.png`
-- `results/figures/reliability_0pct.png`
-- `results/figures/reliability_30pct.png`
-- `results/figures/heatmap_calibration.png`
+No model beats the naive baseline in any way that matters. Predicting each fold's training up-day frequency scores Brier 0.2489, ECE 0.0170, ROC AUC 0.500. The best cell in the grid (logistic regression, median imputation, Platt scaling, MAR, 30% missing) scores Brier 0.2488 and ROC AUC 0.517. ROC AUC across all 15,840 runs spans 0.460 to 0.571, i.e. essentially no discrimination. An AUC near 0.5 is what efficient-market intuition predicts for next-day direction from lag-only price and volume features, so this is an expected outcome, not a failure of the pipeline. It means the study says something about calibration, not about prediction.
 
-After generation, this section must report observed Brier and ECE trends by mechanism and rate, compare imputers and calibrators with uncertainty, state ROC AUC changes, and cite paired tests with corrected p-values. Placeholder text must be replaced by values read from generated outputs; do not infer findings from the configuration alone.
+### Calibration, not imputation, moves the metrics
 
-### Required result table
+Representative cells, logistic regression with median imputation under MCAR (mean over 22 folds × 5 seeds):
 
-| Mechanism | Rate | Model | Imputer | Calibrator | Brier mean ± SD | ECE mean ± SD | ROC AUC mean ± SD |
-|---|---:|---|---|---|---:|---:|---:|
-| Pending experiment output | 0%–30% | Pending | Pending | Pending | Pending | Pending | Pending |
+| Missingness | Calibrator | Brier | ECE | ROC AUC |
+|---:|---|---:|---:|---:|
+| 0% | none | 0.2503 | 0.0397 | 0.5152 |
+| 30% | none | 0.2502 | 0.0385 | 0.5149 |
+| 0% | Platt | 0.2488 | 0.0199 | 0.5159 |
+| 30% | Platt | 0.2488 | 0.0198 | 0.5142 |
+
+Raising missingness from 0% to 30% changes ECE by about 0.001. Adding Platt scaling halves it. Uncalibrated LightGBM is the worst-calibrated cell (ECE 0.0512 at 0% missing) and Platt brings it to 0.0191, with ROC AUC unchanged in every case. Of 1,728 paired Wilcoxon comparisons, 592 survive Holm correction, but the significant effects are ~0.004–0.005 Brier and are almost entirely calibrator contrasts. Imputer choice and MCAR versus MAR produce no meaningful difference.
+
+### What the flat missingness curve does not mean
+
+The 0%→30% result does **not** show that missingness is harmless. These models have almost no signal to lose, so there is nothing for missingness to degrade. Research question 1 — how calibration degrades as missingness increases — is unanswered by this target. Answering it requires a target where real signal exists, such as realized volatility, where a model has accuracy that missingness can damage and calibration can partially recover.
+
+### Sanity check
+
+The single highest AUC in the grid, 0.571, is one fold (fold 13, seed 999, logistic regression, median imputation, MCAR, 10%) and is identical across all three calibrators, so it comes from the base model. Rerunning that cell and four others with the target permuted drops AUC to 0.499, 0.499, 0.502, 0.519, and 0.516. The outlier is a fold-level fluctuation, not label leakage. 481 of 15,840 rows exceed AUC 0.55, consistent with sampling noise around 0.5.
 
 ## Discussion
 
-No empirical discussion is valid until the full configured grid has run. Interpretation should distinguish calibration from discrimination: a lower Brier or ECE does not establish higher predictive usefulness, and a higher AUC does not establish calibrated probabilities. Results should also distinguish consistent paired effects from noise across folds and seeds.
+The result separates calibration from discrimination cleanly. Platt scaling reduces ECE by roughly half for both model families and costs nothing in ROC AUC, because there was no discrimination to cost. That is a legitimate finding for a calibration study: post-hoc calibration corrects overconfident probability outputs even when the underlying predictions carry no signal. It is not evidence that the models work, and it should not be presented as such.
 
-The intended decision rule is comparative and mechanism-specific: recommend a method only when its calibration improvement is supported across paired folds, does not create unacceptable discrimination loss, and remains interpretable under the stated limitations. Otherwise report the result as inconclusive.
+The missingness dimension is inconclusive for the reason given above, and that caveat dominates any statement about MCAR, MAR, or imputation. Recommending an imputer on the basis of these numbers would be reading noise. The one robust, repeated contrast in the paired tests is calibrated versus uncalibrated.
 
 ## Limitations
 
-- The universe contains 32 configured U.S. equities and daily observations; findings may not generalize to other assets, markets, frequencies, or regimes.
+- The universe contains 30 configured U.S. equities and daily observations; findings may not generalize to other assets, markets, frequencies, or regimes.
+- The target carries essentially no predictable signal (ROC AUC ≈ 0.5), so the study cannot measure how missingness degrades a working predictor. Research question 1 needs a target with real signal, such as realized volatility.
+- Walk-forward folds overlap in calendar time and the five seeds share the same underlying observations, so the paired Wilcoxon tests treat dependent observations as independent. The Holm-corrected p-values overstate the evidence; the effect sizes (~0.005 Brier) are the trustworthy summary.
+- The iterative (MICE) imputer emits a convergence warning at `max_iter: 10` and does not reach its stopping criterion. Its rows completed, but the imputed values are approximate.
+- The highest single-run ROC AUC (0.571) is one fold and disappears under label permutation, but per-fold AUC still ranges from 0.478 to 0.562, so individual folds are noisy.
 - MCAR and MAR are simulations, not a complete model of production data collection or market microstructure.
 - The MAR design uses one configured dependence rule and one target feature; sensitivity to other dependence structures is not established.
 - Only logistic regression and LightGBM are evaluated.
 - Walk-forward windows and purge gaps reduce leakage risk but do not remove all dependence among financial observations.
 - ECE depends on binning and can be unstable in small test folds.
 - Historical data and backtest calibration do not establish profitability or suitability for live trading.
-- Current report status is incomplete until data, metrics, figures, and metadata are generated and audited.
 
 ## Reproducibility
 

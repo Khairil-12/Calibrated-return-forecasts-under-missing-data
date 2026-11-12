@@ -19,5 +19,5 @@ def test_report_documents_exist_with_required_sections() -> None:
         "Conclusion",
     ]:
         assert f"## {section}" in report
-    assert "Results are pending" in report
-    assert "Results are pending" in summary
+    assert "naive base rate" in report
+    assert "naive base rate" in summary

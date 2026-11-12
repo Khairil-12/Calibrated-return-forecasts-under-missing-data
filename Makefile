@@ -1,6 +1,7 @@
-.PHONY: all setup data features experiment figures report clean clean-all test lint typecheck
+.PHONY: all setup data features experiment figures report pdf clean clean-all test lint typecheck
 
-# Full pipeline
+# Full pipeline. PDF is a separate target: it needs pandoc and weasyprint,
+# which are not Python dependencies, and `make pdf` fails if they are absent.
 all: setup data features experiment figures report
 
 # Environment setup
@@ -25,9 +26,14 @@ experiment:
 figures:
 	python scripts/generate_figures.py
 
-# Compile report
+# The written report is reports/report.md, produced by the experiment stage.
 report:
-	pandoc reports/report.md -o reports/report.pdf --pdf-engine=weasyprint || echo "pandoc/weasyprint not installed, skipping PDF"
+	@test -f reports/report.md
+
+# Render the PDF. Fails if pandoc or weasyprint is missing instead of
+# reporting success for a PDF that was never produced.
+pdf:
+	pandoc reports/report.md -o reports/report.pdf --pdf-engine=weasyprint
 
 # Run tests
 test:

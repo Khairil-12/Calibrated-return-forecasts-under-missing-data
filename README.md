@@ -6,6 +6,20 @@ CalibMiss is an empirical research pipeline evaluating whether probabilistic nex
 
 ---
 
+## Key Findings
+
+From the full grid (22 walk-forward folds, 5 seeds, 15,840 runs; see `reports/pipeline_run.md`):
+
+- **The naive base rate is already hard to beat.** Predicting each fold's training up-day frequency scores Brier 0.2489 and ECE 0.0170. The best model cell in the grid (logistic regression, median imputation, Platt scaling) reaches Brier 0.2488 and ROC AUC 0.517. An AUC near 0.5 is what efficient-market intuition predicts for next-day direction from these features — the models do not predict direction.
+
+- **Calibration fixes overconfident models; it does not improve predictions.** Uncalibrated LightGBM is the worst-calibrated cell (ECE 0.0512 on complete data) and Platt scaling brings it to 0.0191. For logistic regression, Platt halves ECE from 0.0397 to 0.0199 while leaving ROC AUC unchanged. 592 of 1,728 paired tests survive Holm correction, but the effects are ~0.004–0.005 Brier and nearly all are calibrator contrasts.
+
+- **The missingness result is not evidence that missingness is harmless.** ECE changes by only ~0.001 between 0% and 30% missingness under both MCAR and MAR, but the models have essentially no signal to lose, so there is nothing for missingness to degrade. Research question 1 is unanswered by this target. Testing it requires a target with real signal, such as realized volatility.
+
+![Reliability diagram at 30% missingness](results/figures/reliability_30pct.png)
+
+---
+
 ## Research Questions
 
 1. How does calibration error (Brier score, Expected Calibration Error) degrade as missingness increases from 0% to 30% under MCAR and MAR?
@@ -84,7 +98,7 @@ make all
    make data
    # Or: python scripts/download_data.py
    ```
-   Downloads 32 large-cap U.S. equities (2010-01-01 to 2024-12-31) from Yahoo Finance, validates OHLCV invariants, and saves to `data/raw/{timestamp}_sha256_{hash}.parquet`.
+   Downloads 30 large-cap U.S. equities (2010-01-01 to 2024-12-31) from Yahoo Finance, validates OHLCV invariants, and saves to `data/raw/{timestamp}_sha256_{hash}.parquet`.
 
 2. **Compute point-in-time features and target:**
    ```bash
@@ -170,7 +184,10 @@ The test suite enforces:
 
 ## Limitations and Scope
 
-- Daily equity data for 32 large-cap U.S. stocks; findings may not generalize to intraday frequencies or alternative asset classes.
+- Daily equity data for 30 large-cap U.S. stocks; findings may not generalize to intraday frequencies or alternative asset classes.
+- Next-day direction has essentially no predictable signal here (ROC AUC ≈ 0.5), so missingness-degradation results are uninformative. A target with real signal is needed to test whether missingness harms calibration.
+- Walk-forward folds overlap in time and seeds share the same underlying data, so paired tests treat dependent observations as independent and overstate significance. Effect sizes (~0.005 Brier) matter more than the corrected p-values.
+- The iterative (MICE) imputer does not converge at `max_iter: 10`; those results are approximate.
 - MCAR and MAR are synthetic simulations designed to test robustness, not full descriptions of live market feed outages.
 - MAR models depend on a single configured trigger variable (`volume_ratio`); sensitivity to other dependencies requires further research.
 - Calibration results do not imply economic profitability or alpha generation.
