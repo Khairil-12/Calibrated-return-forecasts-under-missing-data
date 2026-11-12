@@ -16,7 +16,7 @@ From the full grid (22 walk-forward folds, 5 seeds, 15,840 runs; see `reports/pi
 
 - **The missingness result is not evidence that missingness is harmless.** ECE changes by only ~0.001 between 0% and 30% missingness under both MCAR and MAR, but the models have essentially no signal to lose, so there is nothing for missingness to degrade. Research question 1 is unanswered by this target.
 
-- **Volatility target confirms signal and measures the missingness effect.** A second grid used realized volatility (annualized 5-day return std, binarized at the training-fold median) as the target. Models achieve AUC 0.73 versus persistence baseline 0.68 and naive 0.50, confirming real signal. ECE rises by ~0.005 from 0% to 30% missingness — measurable but small. Platt scaling produces negligible ECE improvement (the probability outputs are already well-calibrated). Results in `results/volatility/`. Run with `make experiment-volatility` and `make figures-volatility`.
+- **Volatility target confirms signal and measures the missingness effect.** A second grid used realized volatility (annualized 5-day return std, binarized at the training-fold median, 60-day purge) as the target. Models achieve AUC 0.73 versus persistence baseline 0.67 and naive 0.50, confirming real signal. ECE rises by ~0.003 and AUC falls by ~0.008 from 0% to 30% MCAR missingness — measurable, monotone, but small. Platt scaling does not improve ECE (LightGBM probabilities are already well ranked). Results in `results/volatility/`. Run with `make experiment-volatility` and `make figures-volatility`.
 
 ![Reliability diagram at 30% missingness](results/figures/reliability_30pct.png)
 
