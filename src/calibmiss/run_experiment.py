@@ -390,14 +390,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--rate", type=float)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--n-jobs", type=int, default=-1)
+    parser.add_argument("--experiment-config", default="experiment.yaml")
+    parser.add_argument("--output-dir", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    cfg = get_config(ROOT / "config")
+    cfg = get_config(ROOT / "config", experiment_file=args.experiment_config)
+    output_dir = args.output_dir or (
+        RESULTS / "volatility" if args.experiment_config != "experiment.yaml" else RESULTS
+    )
     X, y, download_date = _load_data(cfg)
     dates = X.index.get_level_values("date").unique().sort_values()
     date_splits = get_split_indices(dates, cfg.experiment.splits.model_dump())
     splits = map_date_splits_to_rows(X, date_splits)
-    write_run_metadata(download_date)
+    write_run_metadata(download_date, output_dir / "run_metadata.json")
 
     if args.model is not None:
         model = next(item for item in cfg.experiment.models if item.name == args.model)
@@ -424,8 +429,16 @@ def main(argv: list[str] | None = None) -> None:
         )
         return
 
-    frame = run_grid(X, y, splits, cfg, n_jobs=args.n_jobs)
-    print(f"Saved {len(frame)} rows to {METRICS_PATH}")
+    frame = run_grid(
+        X,
+        y,
+        splits,
+        cfg,
+        n_jobs=args.n_jobs,
+        output_path=output_dir / "metrics.csv",
+        volatility_target=(args.experiment_config != "experiment.yaml"),
+    )
+    print(f"Saved {len(frame)} rows to {output_dir / 'metrics.csv'}")
 
 
 if __name__ == "__main__":

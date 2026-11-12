@@ -98,11 +98,14 @@ class Config(BaseModel):
 _config: Config | None = None
 
 
-def get_config(config_dir: str | Path = "config") -> Config:
+def get_config(
+    config_dir: str | Path = "config", experiment_file: str = "experiment.yaml"
+) -> Config:
     """Load and return the full configuration.
 
     Args:
         config_dir: Directory containing config YAML files.
+        experiment_file: Name of the experiment YAML file inside `config_dir`.
 
     Returns:
         Config object with all settings.
@@ -119,7 +122,7 @@ def get_config(config_dir: str | Path = "config") -> Config:
     universe = UniverseConfig(**universe_data["universe"])
 
     # Load experiment config
-    with open(config_path / "experiment.yaml") as f:
+    with open(config_path / experiment_file) as f:
         experiment_data = yaml.safe_load(f)
     experiment = ExperimentConfig(**experiment_data["experiment"])
 

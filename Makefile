@@ -1,4 +1,4 @@
-.PHONY: all setup data features experiment figures report pdf clean clean-all test lint typecheck
+.PHONY: all setup data features experiment experiment-volatility figures report pdf clean clean-all test lint typecheck
 
 # Full pipeline. PDF is a separate target: it needs pandoc and weasyprint,
 # which are not Python dependencies, and `make pdf` fails if they are absent.
@@ -21,6 +21,14 @@ features:
 # Run experimental grid
 experiment:
 	python scripts/run_grid.py
+
+# Run the realized-volatility grid (separate target, separate outputs)
+experiment-volatility:
+	python scripts/run_grid.py --experiment-config experiment_volatility.yaml
+
+# Figures for the volatility grid
+figures-volatility:
+	python scripts/generate_figures.py --metrics results/volatility/metrics.csv --output-dir results/volatility/figures
 
 # Generate figures from results
 figures:

@@ -173,10 +173,14 @@ def generate_figures(metrics_path: str | Path, output_dir: str | Path) -> list[P
 
 
 def main() -> None:
-    metrics_path = ROOT / "results" / "metrics.csv"
-    output_dir = ROOT / "results" / "figures"
-    outputs = generate_figures(metrics_path, output_dir)
-    print(f"Generated {len(outputs)} figures in {output_dir}")
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--metrics", default=str(ROOT / "results" / "metrics.csv"))
+    parser.add_argument("--output-dir", default=str(ROOT / "results" / "figures"))
+    args = parser.parse_args()
+    outputs = generate_figures(args.metrics, args.output_dir)
+    print(f"Generated {len(outputs)} figures in {args.output_dir}")
 
 
 if __name__ == "__main__":

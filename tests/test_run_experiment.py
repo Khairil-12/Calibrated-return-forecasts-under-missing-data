@@ -260,10 +260,14 @@ def test_main_preserves_zero_rate_and_seed(monkeypatch) -> None:
     ]
     X, y, splits = make_data()
     captured = []
-    monkeypatch.setattr("calibmiss.run_experiment.get_config", lambda path: cfg)
+    monkeypatch.setattr(
+        "calibmiss.run_experiment.get_config", lambda path, experiment_file="experiment.yaml": cfg
+    )
     monkeypatch.setattr("calibmiss.run_experiment._load_data", lambda config: (X, y, "2026-11-11"))
     monkeypatch.setattr("calibmiss.run_experiment.get_split_indices", lambda dates, config: splits)
-    monkeypatch.setattr("calibmiss.run_experiment.write_run_metadata", lambda download_date: None)
+    monkeypatch.setattr(
+        "calibmiss.run_experiment.write_run_metadata", lambda download_date, path=None: None
+    )
     monkeypatch.setattr(
         "calibmiss.run_experiment.run_single_config",
         lambda *args, **kwargs: captured.append(args[5]) or {"brier": 0.1},
@@ -273,6 +277,42 @@ def test_main_preserves_zero_rate_and_seed(monkeypatch) -> None:
 
     assert captured[0]["rate"] == 0.0
     assert captured[0]["seed"] == 0
+
+
+def test_main_volatility_config_writes_to_separate_dir(tmp_path: Path, monkeypatch) -> None:
+    cfg = tiny_config()
+    X, y, splits = make_data()
+    seen: dict[str, Path] = {}
+
+    monkeypatch.setattr(
+        "calibmiss.run_experiment.get_config", lambda path, experiment_file="experiment.yaml": cfg
+    )
+    monkeypatch.setattr("calibmiss.run_experiment._load_data", lambda config: (X, y, "2026-11-12"))
+    monkeypatch.setattr("calibmiss.run_experiment.get_split_indices", lambda dates, config: splits)
+    monkeypatch.setattr(
+        "calibmiss.run_experiment.write_run_metadata", lambda download_date, path=None: None
+    )
+
+    def fake_run_grid(X, y, splits, config, n_jobs, output_path, volatility_target=False):
+        seen["output_path"] = Path(output_path)
+        seen["volatility_target"] = volatility_target
+        seen["config_name"] = config.experiment.models[0].name
+        return pd.DataFrame([{"row_type": "experiment"}])
+
+    monkeypatch.setattr("calibmiss.run_experiment.run_grid", fake_run_grid)
+
+    main(
+        [
+            "--experiment-config",
+            "experiment_volatility.yaml",
+            "--output-dir",
+            str(tmp_path / "volatility"),
+        ]
+    )
+
+    assert seen["output_path"] == tmp_path / "volatility" / "metrics.csv"
+    assert seen["volatility_target"] is True
+    assert seen["config_name"] == cfg.experiment.models[0].name
 
 
 def test_write_metadata_records_package_versions(tmp_path: Path) -> None:
