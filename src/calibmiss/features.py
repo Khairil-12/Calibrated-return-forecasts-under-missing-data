@@ -82,3 +82,30 @@ def compute_features(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     target = target[valid_mask]
 
     return features, target
+
+
+def compute_volatility_target(raw: pd.DataFrame, horizon: int = 5) -> pd.Series:
+    """Compute the annualized realized volatility over the next `horizon` trading days.
+
+    For each ticker and day t: std (ddof=1) of the daily log returns of days
+    t+1..t+horizon, annualized by sqrt(252). Uses only prices after day t, so
+    the label is by construction a future quantity; features must not see it.
+    Returned rows all have complete features (warmup dropped) and a complete
+    forward window.
+    """
+    if horizon < 1:
+        raise ValueError("horizon must be at least 1")
+    features, _ = compute_features(raw)
+    df = raw.copy().sort_index(level=["ticker", "date"])
+    df["return_1d"] = df.groupby(level="ticker")["adj_close"].transform(
+        lambda x: np.log(x / x.shift(1))
+    )
+    # Forward std: rolling std of returns ending at day t+horizon, attributed to day t.
+    fwd = df.groupby(level="ticker")["return_1d"].transform(
+        lambda x: x.shift(-1).rolling(horizon).std().shift(-(horizon - 1)) * np.sqrt(252)
+    )
+    fwd.name = "target"
+    # Keep only rows with complete features and a complete forward window.
+    usable = features.index.difference(features.index[features.isna().any(axis=1)])
+    fwd = fwd.reindex(features.index).reindex(usable).dropna()
+    return fwd

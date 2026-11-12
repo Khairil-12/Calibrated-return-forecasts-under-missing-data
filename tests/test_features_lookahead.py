@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from calibmiss.features import compute_features
+from calibmiss.features import compute_features, compute_volatility_target
 
 
 def create_sample_raw_data() -> pd.DataFrame:
@@ -109,3 +109,61 @@ class TestComputeFeatures:
 
         assert ("AAPL", pd.Timestamp("2023-01-04")) not in target.index
         assert ("AAPL", pd.Timestamp("2023-01-05")) in target.index
+
+
+class TestVolatilityTarget:
+    """Tests for compute_volatility_target."""
+
+    def test_value_matches_hand_computed_case(self) -> None:
+        dates = pd.date_range("2023-01-02", periods=60, freq="B")
+        index = pd.MultiIndex.from_product([["AAA"], dates], names=["ticker", "date"])
+        rng = np.random.default_rng(3)
+        prices = pd.Series(100 * np.exp(np.cumsum(rng.normal(0.0005, 0.01, 60))), index=index)
+        raw = pd.DataFrame(
+            {"open": prices, "high": prices, "low": prices, "close": prices, "adj_close": prices, "volume": 1000.0},
+            index=index,
+        )
+
+        target = compute_volatility_target(raw, horizon=5)
+        assert len(target) > 0
+        # Hand-computed std of the 5 log returns after a known kept row (day 50):
+        # returns at days 51..55 = log(p[52..56] / p[51..55])? No: return at day k
+        # is log(p[k]/p[k-1]), so the forward window of day 50 covers returns
+        # at days 51..55 = log(p[51..55]/p[50..54]).
+        probe = ("AAA", dates[50])
+        rets = np.log(prices.values[51:56] / prices.values[50:55])
+        expected = rets.std(ddof=1) * np.sqrt(252)
+        assert abs(target.loc[probe] - expected) < 1e-10
+
+    def test_lookahead_window_boundaries(self) -> None:
+        dates = pd.date_range("2023-01-02", periods=60, freq="B")
+        index = pd.MultiIndex.from_product([["AAA"], dates], names=["ticker", "date"])
+        prices = pd.Series(100.0 + np.arange(60), index=index)
+        raw = pd.DataFrame(
+            {"open": prices, "high": prices, "low": prices, "close": prices, "adj_close": prices, "volume": 1000.0},
+            index=index,
+        )
+        probe = ("AAA", dates[50])
+
+        # Mutate prices AFTER the forward window (day 56 onward): target at day 50 must not change.
+        raw_mut = raw.copy()
+        raw_mut.iloc[56:] *= 2
+        assert compute_volatility_target(raw_mut, horizon=5).loc[probe] == compute_volatility_target(raw, horizon=5).loc[probe]
+
+        # Mutate prices INSIDE the forward window (day 53): target at day 50 must change.
+        raw_mut2 = raw.copy()
+        raw_mut2.iloc[53] *= 2
+        assert compute_volatility_target(raw_mut2, horizon=5).loc[probe] != compute_volatility_target(raw, horizon=5).loc[probe]
+
+    def test_index_subset_of_features_and_no_nan_rows(self) -> None:
+        raw = create_sample_raw_data()
+        features, _ = compute_features(raw)
+        target = compute_volatility_target(raw, horizon=5)
+
+        assert target.index.isin(features.index).all()
+        aligned = features.reindex(target.index)
+        assert not aligned.isna().any(axis=None)
+        # Last `horizon` rows per ticker cannot have a full forward window.
+        counts = target.groupby(level="ticker").size()
+        assert (counts < 100).all()
+
