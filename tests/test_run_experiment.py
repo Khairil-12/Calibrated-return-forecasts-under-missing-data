@@ -263,7 +263,10 @@ def test_main_preserves_zero_rate_and_seed(monkeypatch) -> None:
     monkeypatch.setattr(
         "calibmiss.run_experiment.get_config", lambda path, experiment_file="experiment.yaml": cfg
     )
-    monkeypatch.setattr("calibmiss.run_experiment._load_data", lambda config: (X, y, "2026-11-11"))
+    monkeypatch.setattr(
+        "calibmiss.run_experiment._load_data",
+        lambda config, volatility_target=False: (X, y, "2026-11-11"),
+    )
     monkeypatch.setattr("calibmiss.run_experiment.get_split_indices", lambda dates, config: splits)
     monkeypatch.setattr(
         "calibmiss.run_experiment.write_run_metadata", lambda download_date, path=None: None
@@ -287,7 +290,10 @@ def test_main_volatility_config_writes_to_separate_dir(tmp_path: Path, monkeypat
     monkeypatch.setattr(
         "calibmiss.run_experiment.get_config", lambda path, experiment_file="experiment.yaml": cfg
     )
-    monkeypatch.setattr("calibmiss.run_experiment._load_data", lambda config: (X, y, "2026-11-12"))
+    monkeypatch.setattr(
+        "calibmiss.run_experiment._load_data",
+        lambda config, volatility_target=False: (X, y, "2026-11-12"),
+    )
     monkeypatch.setattr("calibmiss.run_experiment.get_split_indices", lambda dates, config: splits)
     monkeypatch.setattr(
         "calibmiss.run_experiment.write_run_metadata", lambda download_date, path=None: None

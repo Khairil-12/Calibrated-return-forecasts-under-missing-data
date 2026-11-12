@@ -18,7 +18,7 @@ from scipy.stats import wilcoxon
 
 from calibmiss.config import Config, get_config
 from calibmiss.data import download_ohlcv
-from calibmiss.features import compute_features
+from calibmiss.features import compute_features, compute_volatility_target
 from calibmiss.metrics import compute_metrics
 from calibmiss.pipeline import run_single_config
 from calibmiss.splits import SplitIndices, get_split_indices
@@ -362,7 +362,7 @@ def write_run_metadata(download_date: str, path: str | Path = METADATA_PATH) -> 
     output.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
 
-def _load_data(cfg: Config) -> tuple[pd.DataFrame, pd.Series, str]:
+def _load_data(cfg: Config, volatility_target: bool = False) -> tuple[pd.DataFrame, pd.Series, str]:
     raw_dir = ROOT / "data" / "raw"
     raw = download_ohlcv(
         cfg.universe.tickers,
@@ -370,10 +370,14 @@ def _load_data(cfg: Config) -> tuple[pd.DataFrame, pd.Series, str]:
         cfg.universe.end_date,
         cache_dir=raw_dir,
     )
-    X, y = compute_features(raw)
-    valid_rows = ~X.isna().any(axis=1)
+    X, _ = compute_features(raw)
+    if volatility_target:
+        y = compute_volatility_target(raw)
+    else:
+        _, y = compute_features(raw)
+    valid_rows = ~X.isna().any(axis=1) & X.index.isin(y.index)
     X = X[valid_rows]
-    y = y[valid_rows]
+    y = y.reindex(X.index)
     key = f"{'_'.join(sorted(cfg.universe.tickers))}_{cfg.universe.start_date}_{cfg.universe.end_date}_sha256_"
     cache_files = list(raw_dir.glob(f"*_{key}*.parquet"))
     download_timestamp = max(int(path.name.split("_", 1)[0]) for path in cache_files)
@@ -398,7 +402,9 @@ def main(argv: list[str] | None = None) -> None:
     output_dir = args.output_dir or (
         RESULTS / "volatility" if args.experiment_config != "experiment.yaml" else RESULTS
     )
-    X, y, download_date = _load_data(cfg)
+    X, y, download_date = _load_data(
+        cfg, volatility_target=(args.experiment_config != "experiment.yaml")
+    )
     dates = X.index.get_level_values("date").unique().sort_values()
     date_splits = get_split_indices(dates, cfg.experiment.splits.model_dump())
     splits = map_date_splits_to_rows(X, date_splits)
