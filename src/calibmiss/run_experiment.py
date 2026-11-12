@@ -84,6 +84,34 @@ def _row_config(
     }
 
 
+def _persistence_row(
+    X: pd.DataFrame,
+    y: pd.Series,
+    split: SplitIndices,
+    fold: int,
+    cfg: Config,
+) -> dict[str, Any]:
+    """Persistence baseline: probability = volatility_5d at day t."""
+    vol_col = "volatility_5d"
+    if vol_col not in X.columns:
+        raise ValueError(f"Persistence requires feature column '{vol_col}'")
+    test_probs = X.iloc[split.test_idx][vol_col].to_numpy()
+    test_y = y.iloc[split.test_idx].to_numpy()
+    result = compute_metrics(test_y, test_probs, n_bins=cfg.experiment.evaluation.n_bins_ece)
+    return {
+        **result,
+        "row_type": "baseline",
+        "baseline": "volatility_persistence",
+        "fold": fold,
+        "seed": None,
+        "model": "persistence",
+        "imputer": "none",
+        "calibrator": "none",
+        "mechanism": "none",
+        "rate": 0.0,
+    }
+
+
 def _baseline_rows(
     X: pd.DataFrame,
     y: pd.Series,
@@ -137,6 +165,20 @@ def _baseline_rows(
     return rows
 
 
+def _binarize_volatility_target(
+    y: pd.Series, split: SplitIndices
+) -> tuple[pd.Series, float]:
+    """Binarize a continuous target at the training-fold median.
+
+    The threshold comes only from `y[train_idx]`; calibrate and test labels are
+    binarized with it but never inform it.
+    """
+    threshold = float(np.median(y.iloc[split.train_idx].to_numpy()))
+    binary = (y > threshold).astype(int)
+    binary.name = "target"
+    return binary, threshold
+
+
 def run_grid(
     X: pd.DataFrame,
     y: pd.Series,
@@ -144,9 +186,21 @@ def run_grid(
     config: Config | None = None,
     n_jobs: int = -1,
     output_path: str | Path | None = METRICS_PATH,
+    volatility_target: bool = False,
 ) -> pd.DataFrame:
-    """Run every configured fold/seed/method and write the result table."""
+    """Run every configured fold/seed/method and write the result table.
+
+    With `volatility_target=True`, `y` is a continuous realized-volatility series;
+    each fold binarizes it at the training-fold median and adds a persistence
+    baseline (probability = `volatility_5d` at day t) next to the naive base rate.
+    """
     cfg = config or get_config(ROOT / "config")
+    if volatility_target:
+        y_by_fold = {
+            fold: _binarize_volatility_target(y, split)[0] for fold, split in enumerate(splits)
+        }
+    else:
+        y_by_fold = {fold: y for fold in range(len(splits))}
     combinations = [
         (fold, seed, model, imputer, calibrator, mechanism, rate)
         for fold in range(len(splits))
@@ -165,7 +219,7 @@ def run_grid(
         split = splits[fold]
         result = run_single_config(
             X,
-            y,
+            y_by_fold[fold],
             split.train_idx,
             split.calibrate_idx,
             split.test_idx,
@@ -176,7 +230,11 @@ def run_grid(
 
     results = Parallel(n_jobs=n_jobs, verbose=10)(delayed(run_one)(combo) for combo in combinations)
     for fold, split in enumerate(splits):
-        results.extend(_baseline_rows(X, y, split, fold, cfg))
+        results.extend(_baseline_rows(X, y_by_fold[fold], split, fold, cfg))
+        if volatility_target:
+            results.append(
+                _persistence_row(X, y_by_fold[fold], split, fold, cfg)
+            )
     frame = pd.DataFrame(results)
     frame["reliability"] = frame["reliability"].map(
         lambda value: json.dumps(value, allow_nan=False) if isinstance(value, dict) else value

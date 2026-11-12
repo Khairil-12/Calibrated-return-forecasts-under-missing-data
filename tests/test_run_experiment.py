@@ -133,6 +133,41 @@ def test_grid_writes_metrics_baselines_summary_and_metadata(tmp_path: Path, monk
     assert (tmp_path / "statistical_tests.csv").exists()
 
 
+def test_volatility_threshold_from_train_fold_only() -> None:
+    X, y_raw, splits = make_data()
+    config = tiny_config()
+    # Volatility-style continuous target: 1.0, 2.0, 3.0, ... 8.0.
+    y_vol = pd.Series(np.arange(1, 9, dtype=float), index=y_raw.index, name="target")
+    config.experiment.models = []
+    frame = run_grid(
+        X, y_vol, splits, config, n_jobs=1, output_path=None, volatility_target=True
+    )
+    naive = frame.loc[frame.baseline == "naive_training_base_rate"].iloc[0]
+
+    # Train rows 0,1 have raw values [1, 2], median 1.5 -> train binary [0, 1],
+    # prevalence 0.5. Test rows 3,7 have raw values 4 and 8 -> binarized [1, 1].
+    # Naive predicts prevalence 0.5 for both -> Brier 0.25. A threshold computed
+    # on ALL data (median 4.5) would binarize train to [0, 0] (prevalence 0.0)
+    # and give Brier 0.5 — so 0.25 proves the threshold came from train only.
+    assert naive.brier == pytest.approx(0.25)
+
+
+def test_persistence_baseline_reports_metrics() -> None:
+    X, y_raw, splits = make_data()
+    config = tiny_config()
+    y_vol = pd.Series(np.arange(1, 9, dtype=float), index=y_raw.index, name="target")
+    X.iloc[[3, 7], X.columns.get_loc("volatility_5d")] = 0.9
+    config.experiment.models = []
+    frame = run_grid(
+        X, y_vol, splits, config, n_jobs=1, output_path=None, volatility_target=True
+    )
+    persistence = frame.loc[frame.baseline == "volatility_persistence"].iloc[0]
+
+    assert {"brier", "ece", "roc_auc"} <= set(persistence.index)
+    # Persistence prob = 0.9 at both test rows; binarized labels [1, 1].
+    assert persistence.brier == pytest.approx(0.01)
+
+
 def test_naive_baseline_uses_training_prevalence() -> None:
     X, y, splits = make_data()
     config = tiny_config()
