@@ -67,6 +67,16 @@ def test_mar_missingness_uses_configured_rule() -> None:
     assert np.isfinite(result["brier"])
 
 
+def test_mar_rejects_non_finite_depends_on_column_before_injection() -> None:
+    X, y, train, cal, test = make_data()
+    X.iloc[0, X.columns.get_loc("volume_ratio")] = np.nan
+    config = make_config()
+    config["mechanism"] = "MAR"
+
+    with pytest.raises(ValueError, match="volume_ratio"):
+        run_single_config(X, y, train, cal, test, config)
+
+
 def test_explicit_model_params_override_yaml() -> None:
     X, y, train, cal, test = make_data()
     config = make_config(rate=0.0)

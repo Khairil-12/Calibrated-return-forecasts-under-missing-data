@@ -54,6 +54,15 @@ def run_single_config(
                 rule_type=rule_cfg.rule_type,
                 params=rule_cfg.params,
             )
+            for label, part in (("train", X_train), ("calibrate", X_cal), ("test", X_test)):
+                if rule.depends_on in part.columns:
+                    bad = part.loc[~np.isfinite(part[rule.depends_on].to_numpy()), rule.depends_on]
+                    if len(bad):
+                        raise ValueError(
+                            f"MAR driver column '{rule.depends_on}' has {len(bad)} non-finite "
+                            f"value(s) in the {label} split (rows: {list(bad.index[:5])}); "
+                            "drop warmup rows before injecting missingness"
+                        )
             X_train, _ = inject_mar(X_train, rule, rate, seed)
             X_cal, _ = inject_mar(X_cal, rule, rate, seed + 1)
             X_test, _ = inject_mar(X_test, rule, rate, seed + 2)
