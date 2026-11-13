@@ -112,3 +112,49 @@ def test_explicit_model_params_override_yaml() -> None:
     result = run_single_config(X, y, train, cal, test, config)
 
     assert np.isfinite(result["brier"])
+
+
+def _ticker_data(n_ticks: int = 5, rows_per_ticker: int = 60) -> tuple[pd.DataFrame, pd.Series, np.ndarray, np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(7)
+    idx = pd.MultiIndex.from_product(
+        [range(n_ticks), range(rows_per_ticker)], names=["ticker", "date"]
+    )
+    X = pd.DataFrame(rng.normal(size=(n_ticks * rows_per_ticker, 3)), index=idx)
+    y = pd.Series((X.iloc[:, 0] > 0).astype(int), index=idx)
+    n = len(X)
+    return X, y, np.arange(n // 2), np.arange(n // 2, int(n * 0.75)), np.arange(int(n * 0.75), n)
+
+
+def test_mcar_block_runs_through_pipeline() -> None:
+    X, y, train, cal, test = _ticker_data()
+    config = make_config()
+    config["mechanism"] = "MCAR-BLOCK"
+
+    result = run_single_config(X, y, train, cal, test, config)
+
+    assert result["mechanism"] == "MCAR-BLOCK"
+    assert np.isfinite(result["brier"])
+
+
+def test_seed_reproducibility_for_mcar_block() -> None:
+    X, y, train, cal, test = _ticker_data()
+    config = make_config()
+    config["mechanism"] = "MCAR-BLOCK"
+    first = run_single_config(X, y, train, cal, test, config)
+    second = run_single_config(X, y, train, cal, test, config)
+    assert {k: v for k, v in first.items() if "reliability" not in k} == {
+        k: v for k, v in second.items() if "reliability" not in k
+    }
+
+
+def test_drop_imputer_drops_incomplete_rows() -> None:
+    X, y, train, cal, test = _ticker_data()
+    config = make_config()
+    config["mechanism"] = "MCAR"
+    config["imputer"] = "drop"
+    config["imputer_params"] = {}
+
+    result = run_single_config(X, y, train, cal, test, config)
+
+    assert np.isfinite(result["brier"])
+    assert result["imputer"] == "drop"

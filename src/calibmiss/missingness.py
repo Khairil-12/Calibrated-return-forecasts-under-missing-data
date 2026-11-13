@@ -46,6 +46,77 @@ def inject_mcar(X: pd.DataFrame, rate: float, seed: int) -> tuple[pd.DataFrame, 
     return X_missing, realized
 
 
+def inject_mcar_block(
+    X: pd.DataFrame,
+    rate: float,
+    seed: int,
+    max_block: int = 10,
+    tol: float = 0.005,
+    max_iter: int = 20,
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Inject MCAR missingness as whole consecutive-day blocks per ticker.
+
+    Real daily data goes missing in streaks (halts, API gaps, delist days), not
+    cell-by-cell. Each ticker is processed independently: a day opens a streak
+    with probability `p`, then the masked gap is extended to a block whose
+    length is drawn uniformly from 2..max_block (trimmed to the remaining rows).
+    `p` is calibrated by scaling so the realized missing rate matches `rate`.
+
+    Args:
+        X: Complete feature matrix with a MultiIndex (ticker, date).
+        rate: Target row-missing rate (0 to 1).
+        seed: Random seed for reproducibility.
+        max_block: Upper bound on streak length. A block of length 2 already
+            destroys information MCAR at the same rate cannot.
+        tol: Acceptable absolute drift of realized rate from target.
+        max_iter: Cap on calibration iterations.
+
+    Returns:
+        Tuple of (DataFrame with NaN, dict of realized missing rates per column).
+    """
+    if not 0 <= rate <= 1:
+        raise ValueError("Rate must be between 0 and 1")
+    if "ticker" not in X.index.names:
+        raise ValueError("MCAR-BLOCK requires a MultiIndex with a 'ticker' level")
+    if max_block < 2:
+        raise ValueError("max_block must be at least 2")
+
+    # Block start probability. A block of mean length L masks ~p*L rows, so start
+    # from p = rate / mean_length, then rescale toward the realized rate.
+    mean_length = (2 + max_block) / 2
+    p = min(rate / mean_length, 0.5) if rate > 0 else 0.0
+
+    def apply(p: float) -> pd.DataFrame:
+        rng = np.random.RandomState(seed)
+        values = X.copy()
+        for _, ticker_frame in X.groupby(level="ticker", sort=False):
+            rows = ticker_frame.index
+            n = len(rows)
+            if n == 0:
+                continue
+            mask = np.zeros(n, dtype=bool)
+            starts = rng.random(n) < p
+            length = rng.randint(2, max_block + 1, size=n)
+            for pos in np.flatnonzero(starts):
+                if pos >= n - 1:
+                    continue  # no room for a length-2+ block; skip to avoid 1-cell streaks
+                mask[pos : min(pos + int(length[pos]), n)] = True
+            mask_2d = np.broadcast_to(mask[:, None], ticker_frame.shape)
+            values.loc[rows, :] = np.where(mask_2d, np.nan, ticker_frame.to_numpy())
+        return values
+
+    if rate == 0:
+        return X.copy(), {col: 0.0 for col in X.columns}
+    for _ in range(max_iter):
+        values = apply(p)
+        realized = float(values.isna().mean().mean())
+        if abs(realized - rate) <= tol:
+            break
+        p = max(min(p * rate / max(realized, 1e-9), 1.0), 0.0)
+    realized_rates = {col: float(values[col].isna().mean()) for col in X.columns}
+    return values, realized_rates
+
+
 def inject_mar(
     X: pd.DataFrame,
     rule: MARRuleConfig,
@@ -161,6 +232,8 @@ def simulate_missingness_grid(
             for seed in seeds:
                 if mechanism == "MCAR":
                     X_miss, realized = inject_mcar(X, rate, seed)
+                elif mechanism == "MCAR-BLOCK":
+                    X_miss, realized = inject_mcar_block(X, rate, seed)
                 elif mechanism == "MAR":
                     if "MAR" not in mar_rules:
                         raise ValueError("MAR rule config required for MAR mechanism")

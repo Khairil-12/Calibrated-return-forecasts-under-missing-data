@@ -2,7 +2,20 @@
 
 import numpy as np
 import pandas as pd
-from calibmiss.missingness import MARRuleConfig, inject_mar, inject_mcar, simulate_missingness_grid
+from calibmiss.missingness import (
+    MARRuleConfig,
+    inject_mar,
+    inject_mcar,
+    inject_mcar_block,
+    simulate_missingness_grid,
+)
+
+
+def _ticker_frame(n_ticks: int = 5, n_days: int = 200) -> pd.DataFrame:
+    idx = pd.MultiIndex.from_product(
+        [range(n_ticks), range(n_days)], names=["ticker", "date"]
+    )
+    return pd.DataFrame(np.random.randn(n_ticks * n_days, 5), index=idx)
 
 
 class TestMCAR:
@@ -44,6 +57,41 @@ class TestMCAR:
         X_miss2, _ = inject_mcar(X, rate=0.2, seed=123)
         # Should have different NaN patterns
         assert not X_miss1.isna().equals(X_miss2.isna())
+
+
+class TestMCARBlock:
+    """Tests for MCAR-BLOCK missingness injection."""
+
+    def test_block_missing_structure(self) -> None:
+        """NaN cells must form whole-ticker consecutive streaks, not isolated cells."""
+        X = _ticker_frame()
+        X_missing, _ = inject_mcar_block(X, rate=0.2, seed=42)
+        for _, ticker_frame in X_missing.groupby(level="ticker"):
+            miss = ticker_frame.isna().any(axis=1).to_numpy().astype(int)
+            n = len(miss)
+            for i in np.flatnonzero(miss == 1):
+                left = miss[i - 1] if i > 0 else 0
+                right = miss[i + 1] if i < n - 1 else 0
+                assert left == 1 or right == 1, f"isolated missing cell at {i}"
+
+    def test_block_target_rate(self) -> None:
+        """Row-missing rate should approximate target."""
+        X = _ticker_frame()
+        X_missing, _ = inject_mcar_block(X, rate=0.2, seed=42)
+        assert abs(X_missing.isna().mean().mean() - 0.2) < 0.05
+
+    def test_block_reproducible(self) -> None:
+        X = _ticker_frame()
+        X1, _ = inject_mcar_block(X, 0.2, 7)
+        X2, _ = inject_mcar_block(X, 0.2, 7)
+        pd.testing.assert_frame_equal(X1, X2)
+
+    def test_block_requires_ticker(self) -> None:
+        import pytest
+
+        X = pd.DataFrame(np.random.randn(50, 3))
+        with pytest.raises(ValueError):
+            inject_mcar_block(X, 0.2, 1)
 
 
 class TestMAR:
@@ -201,8 +249,7 @@ class TestMissingnessGrid:
         results = simulate_missingness_grid(X, mechanisms, rates, seeds, mar_rules)
 
         # Check structure: results[mechanism][rate][seed] = (X_missing, realized)
-        assert "MCAR" in results
-        assert "MAR" in results
+        assert set(results.keys()) == set(mechanisms)
         for mech in mechanisms:
             for rate in rates:
                 assert rate in results[mech]
@@ -211,3 +258,22 @@ class TestMissingnessGrid:
                     X_miss, realized = results[mech][rate][seed]
                     assert isinstance(X_miss, pd.DataFrame)
                     assert isinstance(realized, dict)
+
+    def test_simulate_grid_dispatches_mcar_block(self) -> None:
+        """Grid must dispatch MCAR-BLOCK to block-streak injection, not cell MCAR."""
+        X = _ticker_frame()
+        results = simulate_missingness_grid(X, ["MCAR", "MCAR-BLOCK"], [0.2], [42], {})
+        block, _ = results["MCAR-BLOCK"][0.2][42]
+        cell, _ = results["MCAR"][0.2][42]
+        for _, ticker_frame in block.groupby(level="ticker"):
+            miss = ticker_frame.isna().any(axis=1).to_numpy().astype(int)
+            n = len(miss)
+            for i in np.flatnonzero(miss == 1):
+                neighbours = (int(miss[i - 1]) if i > 0 else 0) + (
+                    int(miss[i + 1]) if i < n - 1 else 0
+                )
+                assert neighbours >= 1, f"isolated missing cell at {i}"
+        # Block pattern must differ from plain MCAR pattern.
+        assert not block.isna().equals(cell.isna())
+        # Both approximate the target row rate.
+        assert abs(block.isna().mean().mean() - 0.2) < 0.05

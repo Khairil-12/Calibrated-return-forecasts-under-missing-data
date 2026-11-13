@@ -11,7 +11,12 @@ from calibmiss.calibration import get_calibrator
 from calibmiss.config import CalibratorConfig, ImputerConfig, ModelConfig, get_config, get_mar_rules
 from calibmiss.imputers import get_imputer
 from calibmiss.metrics import compute_metrics
-from calibmiss.missingness import MARRuleConfig, inject_mar, inject_mcar
+from calibmiss.missingness import (
+    MARRuleConfig,
+    inject_mar,
+    inject_mcar,
+    inject_mcar_block,
+)
 from calibmiss.models import get_model
 
 
@@ -33,7 +38,7 @@ def run_single_config(
     seed = int(config["seed"])
     mechanism = str(config["mechanism"])
     config_dir = Path(__file__).resolve().parents[2] / "config"
-    if mechanism not in ("MCAR", "MAR"):
+    if mechanism not in ("MCAR", "MCAR-BLOCK", "MAR"):
         raise ValueError(f"Unknown mechanism: {mechanism}")
     experiment = (experiment_config or get_config(config_dir)).experiment
     if rate > 0:
@@ -41,6 +46,10 @@ def run_single_config(
             X_train, _ = inject_mcar(X_train, rate, seed)
             X_cal, _ = inject_mcar(X_cal, rate, seed + 1)
             X_test, _ = inject_mcar(X_test, rate, seed + 2)
+        elif mechanism == "MCAR-BLOCK":
+            X_train, _ = inject_mcar_block(X_train, rate, seed)
+            X_cal, _ = inject_mcar_block(X_cal, rate, seed + 1)
+            X_test, _ = inject_mcar_block(X_test, rate, seed + 2)
         elif mechanism == "MAR":
             rules = (
                 experiment_config.mar_rules
@@ -88,6 +97,10 @@ def run_single_config(
     X_train = imputer.transform(X_train)
     X_cal = imputer.transform(X_cal)
     X_test = imputer.transform(X_test)
+    # Imputers like drop/complete-case remove rows; keep y aligned by row label.
+    y_train = y_train.reindex(X_train.index)
+    y_cal = y_cal.reindex(X_cal.index)
+    y_test = y_test.reindex(X_test.index)
 
     model_params = config.get("model_params")
     if model_params is None:
