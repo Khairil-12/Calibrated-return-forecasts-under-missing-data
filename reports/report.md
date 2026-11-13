@@ -1,12 +1,12 @@
 # CalibMiss: Calibrated Return Forecasts Under Missing Data
 
-**Status:** Direction grid completed 2026-11-12; realized-volatility extension completed 2026-11-13. Quantitative results below; run log in `reports/pipeline_run.md`.
+**Status:** Direction grid completed 2026-11-12, rerun without class weighting 2026-11-13; realized-volatility extension completed 2026-11-13. Quantitative results below; run log in `reports/pipeline_run.md`.
 
 ## Abstract
 
 CalibMiss studies whether probabilistic next-day stock-direction forecasts remain calibrated when feature values are missing. It compares missing-completely-at-random (MCAR) and missing-at-random (MAR) mechanisms across missingness rates, model families, imputers, and post-hoc calibrators. The primary outcomes are Brier score, expected calibration error (ECE), and reliability diagrams; ROC AUC is secondary. The repository contains a deterministic, cached data pipeline, feature construction, missingness simulation, train-only imputation, calibration on a held-out split, walk-forward evaluation, statistical summaries, and figure generation.
 
-The configured grid has been run: 15,840 experiment rows across 22 walk-forward folds and 5 seeds, with figures in `results/figures/`. The central result is that next-day direction is not predictable from these features (ROC AUC ≈ 0.5, no model beats the naive base rate), so post-hoc calibration corrects overconfident probabilities but missingness has no signal to degrade.
+The configured grid has been run: 15,840 experiment rows across 22 walk-forward folds and 5 seeds, with figures in `results/figures/`. The central result is that next-day direction is not predictable from these features (ROC AUC ≈ 0.5, no model beats the naive base rate), so post-hoc calibration corrects mildly overconfident probabilities but missingness has no signal to degrade.
 
 ## Introduction
 
@@ -69,24 +69,24 @@ Primary comparisons should use identical fold, seed, model, mechanism, and rate 
 
 ## Results
 
-The full grid ran on 2026-11-12: 22 walk-forward folds, 5 seeds, 15,840 experiment rows plus 154 baseline rows (`results/metrics.csv`). Figures are in `results/figures/`. The run log is `reports/pipeline_run.md`.
+The full grid ran on 2026-11-12 and was rerun without class weighting on 2026-11-13: 22 walk-forward folds, 5 seeds, 15,840 experiment rows plus baseline rows (`results/metrics.csv`). Figures are in `results/figures/`. The run log is `reports/pipeline_run.md`.
 
 ### Headline
 
-No model beats the naive baseline in any way that matters. Predicting each fold's training up-day frequency scores Brier 0.2489, ECE 0.0170, ROC AUC 0.500. The best cell in the grid (logistic regression, median imputation, Platt scaling, MAR, 30% missing) scores Brier 0.2488 and ROC AUC 0.517. ROC AUC across all 15,840 runs spans 0.460 to 0.571, i.e. essentially no discrimination. An AUC near 0.5 is what efficient-market intuition predicts for next-day direction from lag-only price and volume features, so this is an expected outcome, not a failure of the pipeline. It means the study says something about calibration, not about prediction.
+No model beats the naive baseline in any way that matters. Predicting each fold's training up-day frequency scores Brier 0.2489, ECE 0.0170, ROC AUC 0.500. The best cell in the grid (logistic regression, median imputation, Platt scaling, MAR, 30% missing) scores Brier 0.2488 and ROC AUC 0.516. ROC AUC across all 15,840 runs spans 0.459 to 0.571, i.e. essentially no discrimination. An AUC near 0.5 is what efficient-market intuition predicts for next-day direction from lag-only price and volume features, so this is an expected outcome, not a failure of the pipeline. It means the study says something about calibration, not about prediction.
 
 ### Calibration, not imputation, moves the metrics
 
-Representative cells, logistic regression with median imputation under MCAR (mean over 22 folds × 5 seeds):
+Representative cells, logistic regression with median imputation under MCAR (mean over 22 folds × 5 seeds). Models run without class weighting — an earlier run with `class_weight: "balanced"` inflated the uncalibrated ECE (0.0397) by pulling probabilities toward 0.5; the figures below are from the unweighted rerun:
 
 | Missingness | Calibrator | Brier | ECE | ROC AUC |
 |---:|---|---:|---:|---:|
-| 0% | none | 0.2503 | 0.0397 | 0.5152 |
-| 30% | none | 0.2502 | 0.0385 | 0.5149 |
+| 0% | none | 0.2491 | 0.0234 | 0.5152 |
+| 30% | none | 0.2490 | 0.0219 | 0.5149 |
 | 0% | Platt | 0.2488 | 0.0199 | 0.5159 |
-| 30% | Platt | 0.2488 | 0.0198 | 0.5142 |
+| 30% | Platt | 0.2488 | 0.0199 | 0.5142 |
 
-Raising missingness from 0% to 30% changes ECE by about 0.001. Adding Platt scaling halves it. Uncalibrated LightGBM is the worst-calibrated cell (ECE 0.0512 at 0% missing) and Platt brings it to 0.0191, with ROC AUC unchanged in every case. Of 1,728 paired Wilcoxon comparisons, 592 survive Holm correction, but the significant effects are ~0.004–0.005 Brier and are almost entirely calibrator contrasts. Imputer choice and MCAR versus MAR produce no meaningful difference.
+Raising missingness from 0% to 30% changes ECE by about 0.001. Adding Platt scaling improves ECE by about 15% (0.0234 → 0.0199) — a much smaller effect than the earlier balanced-weighted run suggested, because part of what Platt was correcting there was the weighting artifact itself. Uncalibrated LightGBM remains the worst-calibrated cell (ECE 0.0407 at 0% missing; without weighting it sits closer to the base rate than before) and Platt brings it to 0.0194, with ROC AUC unchanged in every case. Of 1,728 paired Wilcoxon comparisons, 507 survive Holm correction, but the significant effects are ~0.004–0.005 Brier and are almost entirely calibrator contrasts. Imputer choice and MCAR versus MAR produce no meaningful difference.
 
 ### What the flat missingness curve does not mean
 
@@ -94,7 +94,7 @@ The 0%→30% result does **not** show that missingness is harmless. These models
 
 ### Sanity check
 
-The single highest AUC in the grid, 0.571, is one fold (fold 13, seed 999, logistic regression, median imputation, MCAR, 10%) and is identical across all three calibrators, so it comes from the base model. Rerunning that cell and four others with the target permuted drops AUC to 0.499, 0.499, 0.502, 0.519, and 0.516. The outlier is a fold-level fluctuation, not label leakage. 481 of 15,840 rows exceed AUC 0.55, consistent with sampling noise around 0.5.
+The single highest AUC in the grid, 0.571, is one fold (fold 13, seed 999, logistic regression, median imputation, MCAR, 10%) and is identical across all three calibrators, so it comes from the base model. Rerunning that cell and four others with the target permuted drops AUC to 0.499, 0.499, 0.502, 0.519, and 0.516. The outlier is a fold-level fluctuation, not label leakage. 495 of 15,840 rows exceed AUC 0.55, consistent with sampling noise around 0.5.
 
 ### Volatility Extension: Realized Volatility as Target
 
@@ -127,7 +127,7 @@ ECE rises by 0.0034 and AUC falls by 0.008 from 0% to 30% missingness (MCAR; the
 
 ## Discussion
 
-The result separates calibration from discrimination cleanly. Platt scaling reduces ECE by roughly half for both model families and costs nothing in ROC AUC, because there was no discrimination to cost. That is a legitimate finding for a calibration study: post-hoc calibration corrects overconfident probability outputs even when the underlying predictions carry no signal. It is not evidence that the models work, and it should not be presented as such.
+The result separates calibration from discrimination cleanly. Platt scaling reduces ECE for both model families and costs nothing in ROC AUC, because there was no discrimination to cost. That is a legitimate finding for a calibration study: post-hoc calibration corrects miscalibrated probability outputs even when the underlying predictions carry no signal. It is not evidence that the models work, and it should not be presented as such.
 
 The missingness dimension is inconclusive for the reason given above, and that caveat dominates any statement about MCAR, MAR, or imputation. Recommending an imputer on the basis of these numbers would be reading noise. The one robust, repeated contrast in the paired tests is calibrated versus uncalibrated.
 
@@ -135,6 +135,7 @@ The missingness dimension is inconclusive for the reason given above, and that c
 
 - The universe contains 30 configured U.S. equities and daily observations; findings may not generalize to other assets, markets, frequencies, or regimes.
 - The universe was selected in 2026 from today's large caps, so it carries survivorship bias: tickers that failed or were delisted between 2010 and 2024 are absent, and current constituents (e.g. NVDA, META, TSLA) are known with hindsight. META did not begin trading until May 2012; its pre-2012 rows simply do not exist in the downloaded data. Results describe calibration behavior for this survived set only.
+- Models in the direction grid run without class weighting; an earlier balanced-weighted run inflated uncalibrated LR ECE (0.0397 vs 0.0234 unweighted) because balanced weighting pulls probabilities toward 0.5, and Platt scaling appeared to correct more of it than it actually does. The volatility grid keeps `class_weight: "balanced"` explicitly — its target is ~50/50 by construction, so weighting is near-neutral there.
 - The target carries essentially no predictable signal (ROC AUC ≈ 0.5), so the study cannot measure how missingness degrades a working predictor. Research question 1 needs a target with real signal, such as realized volatility.
 - Walk-forward folds overlap in calendar time and the five seeds share the same underlying observations, so the paired Wilcoxon tests treat dependent observations as independent. The Holm-corrected p-values overstate the evidence; the effect sizes (~0.005 Brier) are the trustworthy summary.
 - The iterative (MICE) imputer emits a convergence warning at `max_iter: 10` and does not reach its stopping criterion. Its rows completed, but the imputed values are approximate.
@@ -162,4 +163,4 @@ The data download date, Python version, package versions, random seeds, and conf
 
 ## Conclusion
 
-CalibMiss defines a reproducible test of probabilistic calibration under controlled MCAR and MAR feature missingness, run on two targets. On next-day direction the target itself has no signal (ROC AUC ≈ 0.5), so post-hoc calibration is the only effect that moves the metrics and the missingness question is unanswerable there. On next-5-day realized volatility — where real signal exists (models AUC ≈ 0.73 vs persistence 0.67) — missingness from 0% to 30% shifts ECE by about +0.003 and AUC by about −0.008 under MCAR: measurable, monotone, and small. Across both targets, calibration quality is dominated by the calibrator choice, not by missingness, imputation, or mechanism. Final conclusions must be based on generated metrics, uncertainty summaries, corrected paired tests, and figures rather than assumptions about which method should perform best.
+CalibMiss defines a reproducible test of probabilistic calibration under controlled MCAR and MAR feature missingness, run on two targets. On next-day direction the target itself has no signal (ROC AUC ≈ 0.5), so post-hoc calibration is the only effect that moves the metrics and the missingness question is unanswerable there. On next-5-day realized volatility — where real signal exists (models AUC ≈ 0.73 vs persistence 0.67) — missingness from 0% to 30% shifts ECE by about +0.003 and AUC by about −0.008 under MCAR: measurable, monotone, and small. Across both targets, calibration quality is dominated by the calibrator choice, not by missingness, imputation, or mechanism — though on the direction target the calibration gain from Platt is modest (~15% ECE reduction) once class weighting is removed. Final conclusions must be based on generated metrics, uncertainty summaries, corrected paired tests, and figures rather than assumptions about which method should perform best.

@@ -1,6 +1,6 @@
 # CalibMiss pipeline run report
 
-Run date: 2026-11-12. Machine: Windows 11, Python 3.12.6, 16 logical cores.
+Run date: 2026-11-12; direction grid rerun without class weighting 2026-11-13. Machine: Windows 11, Python 3.12.6, 16 logical cores.
 
 `make all` was not invoked as one command. Its stages were run individually in order, because the first full attempt crashed and two code fixes were required before the grid could finish. Every stage below maps to a `make` target.
 
@@ -34,11 +34,11 @@ Run date: 2026-11-12. Machine: Windows 11, Python 3.12.6, 16 logical cores.
 
 15,840 experiment rows (22 walk-forward folds x 5 seeds x 2 models x 3 imputers x 3 calibrators x 2 mechanisms x 4 rates) plus 154 baseline rows.
 
-- **Nothing beats the naive base rate.** Predicting the training-fold up-day frequency gives Brier 0.2489, ECE 0.0170, ROC AUC 0.500. The best model configuration (logistic regression, median imputer, Platt, MAR, 30% missing) reaches Brier 0.2488 and ROC AUC 0.517 — a Brier improvement of 0.0001, inside the noise. Discrimination is effectively absent across the whole grid (ROC AUC 0.460 to 0.571).
+- **Nothing beats the naive base rate.** Predicting the training-fold up-day frequency gives Brier 0.2489, ECE 0.0170, ROC AUC 0.500. The best model configuration (logistic regression, median imputer, Platt, MAR, 30% missing) reaches Brier 0.2488 and ROC AUC 0.516 — a Brier improvement of 0.0001, inside the noise. Discrimination is effectively absent across the whole grid (ROC AUC 0.459 to 0.571).
 
-- **Calibration, not imputation, moves the metrics.** For logistic regression with median imputation under MCAR, going from 0% to 30% missingness changes ECE by -0.001 (0.0397 to 0.0385) and Brier not at all. Adding Platt scaling at 0% missingness cuts ECE in half, 0.0397 to 0.0199, and lowers Brier from 0.2503 to 0.2488. Uncalibrated LightGBM is the worst-calibrated cell in the grid (ECE 0.0512 at 0% missing) and Platt brings it to 0.0191.
+- **Calibration, not imputation, moves the metrics.** For logistic regression with median imputation under MCAR, going from 0% to 30% missingness changes ECE by -0.002 (0.0234 to 0.0219) and Brier not at all. Adding Platt scaling at 0% missingness improves ECE from 0.0234 to 0.0199 and lowers Brier from 0.2491 to 0.2488. Uncalibrated LightGBM is the worst-calibrated cell in the grid (ECE 0.0407 at 0% missing) and Platt brings it to 0.0194. (Numbers from the 2026-11-13 unweighted rerun; the 2026-11-12 balanced-weighted run showed larger uncalibrated ECE — 0.0397 LR / 0.0512 LightGBM — because balanced weighting pulls probabilities toward 0.5.)
 
-- **592 of 1,728 paired comparisons are significant after Holm correction**, but the effects are small and concentrated on the calibrator contrast: calibrated vs uncalibrated LightGBM differs by about 0.004 to 0.005 Brier. Missingness rate and mechanism (MCAR vs MAR) produce no meaningful degradation anywhere in the grid.
+- **507 of 1,728 paired comparisons are significant after Holm correction**, but the effects are small and concentrated on the calibrator contrast: calibrated vs uncalibrated LightGBM differs by about 0.004 to 0.005 Brier. Missingness rate and mechanism (MCAR vs MAR) produce no meaningful degradation anywhere in the grid.
 
 ## Outputs produced
 
@@ -60,7 +60,7 @@ The highest AUC in the grid, 0.571, is a single fold (fold 13, seed 999, logisti
 | fold 5, LightGBM, iterative, MCAR 0% | 0.5345 | 0.5185 |
 | fold 10, LightGBM, forward fill, Platt, MAR 20% | 0.4853 | 0.5156 |
 
-Shuffled AUC sits at 0.5. The 0.571 is a fold-level fluctuation, not label leakage. 481 of 15,840 rows exceed 0.55, which is the expected scatter around a true AUC of 0.5.
+Shuffled AUC sits at 0.5. The 0.571 is a fold-level fluctuation, not label leakage. 495 of 15,840 rows exceed 0.55 in the rerun, which is the expected scatter around a true AUC of 0.5.
 
 ## Not committed
 

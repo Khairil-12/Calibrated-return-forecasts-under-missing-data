@@ -10,9 +10,9 @@ CalibMiss is an empirical research pipeline evaluating whether probabilistic nex
 
 From the full grid (22 walk-forward folds, 5 seeds, 15,840 runs; see `reports/pipeline_run.md`):
 
-- **The naive base rate is already hard to beat.** Predicting each fold's training up-day frequency scores Brier 0.2489 and ECE 0.0170. The best model cell in the grid (logistic regression, median imputation, Platt scaling) reaches Brier 0.2488 and ROC AUC 0.517. An AUC near 0.5 is what efficient-market intuition predicts for next-day direction from these features — the models do not predict direction.
+- **The naive base rate is already hard to beat.** Predicting each fold's training up-day frequency scores Brier 0.2489 and ECE 0.0170. The best model cell in the grid (logistic regression, median imputation, Platt scaling) reaches Brier 0.2488 and ROC AUC 0.516. An AUC near 0.5 is what efficient-market intuition predicts for next-day direction from these features — the models do not predict direction.
 
-- **Calibration fixes overconfident models; it does not improve predictions.** Uncalibrated LightGBM is the worst-calibrated cell (ECE 0.0512 on complete data) and Platt scaling brings it to 0.0191. For logistic regression, Platt halves ECE from 0.0397 to 0.0199 while leaving ROC AUC unchanged. 592 of 1,728 paired tests survive Holm correction, but the effects are ~0.004–0.005 Brier and nearly all are calibrator contrasts.
+- **Calibration fixes overconfident models; it does not improve predictions.** Uncalibrated LightGBM is the worst-calibrated cell (ECE 0.0407 on complete data) and Platt scaling brings it to 0.0194. For logistic regression, Platt improves ECE from 0.0234 to 0.0199 (~15%) while leaving ROC AUC unchanged. (An earlier run with `class_weight: "balanced"` inflated these gains by pulling probabilities toward 0.5; the grid now runs unweighted.) 507 of 1,728 paired tests survive Holm correction, but the effects are ~0.004–0.005 Brier and nearly all are calibrator contrasts.
 
 - **The missingness result is not evidence that missingness is harmless.** ECE changes by only ~0.001 between 0% and 30% missingness under both MCAR and MAR, but the models have essentially no signal to lose, so there is nothing for missingness to degrade. Research question 1 is unanswered by this target.
 

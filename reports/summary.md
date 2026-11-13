@@ -18,13 +18,13 @@ The pipeline includes complete-data oracle and naive training-prevalence baselin
 
 The full grid (22 folds, 5 seeds, 15,840 runs) shows:
 
-- **No model beats the naive base rate.** Training-fold up-day frequency scores Brier 0.2489 and ECE 0.0170. The best model cell reaches Brier 0.2488 and ROC AUC 0.517. Next-day direction is effectively unpredictable from these features, which is what efficient-market intuition predicts. This is a calibration result, not evidence that the models predict returns.
-- **Calibration fixes overconfidence, not predictions.** Platt scaling halves logistic-regression ECE (0.0397 → 0.0199) and cuts uncalibrated LightGBM ECE from 0.0512 to 0.0191, with ROC AUC unchanged. The significant paired tests are calibrator contrasts of ~0.005 Brier.
+- **No model beats the naive base rate.** Training-fold up-day frequency scores Brier 0.2489 and ECE 0.0170. The best model cell reaches Brier 0.2488 and ROC AUC 0.516. Next-day direction is effectively unpredictable from these features, which is what efficient-market intuition predicts. This is a calibration result, not evidence that the models predict returns.
+- **Calibration fixes overconfidence, not predictions.** Platt scaling improves logistic-regression ECE from 0.0234 to 0.0199 (~15%) and cuts uncalibrated LightGBM ECE from 0.0407 to 0.0194, with ROC AUC unchanged. (Models run without class weighting; a balanced-weighted earlier run inflated the uncalibrated ECE.) The significant paired tests are calibrator contrasts of ~0.005 Brier.
 - **Missingness looks harmless only because there is no signal to lose.** ECE moves ~0.001 from 0% to 30% missingness under both MCAR and MAR. That does not answer whether missingness degrades calibration; a target with real signal (e.g. realized volatility) is needed for that.
 
 ## Scope limits on the statistics
 
-Walk-forward folds overlap in time and seeds share the same data, so the paired tests treat dependent observations as independent and the Holm-corrected p-values overstate the evidence. The iterative imputer does not converge at its configured iteration cap, so its numbers are approximate.
+Walk-forward folds overlap in time and seeds share the same data, so the paired tests treat dependent observations as independent and the Holm-corrected p-values overstate the evidence. The iterative imputer does not converge at its configured iteration cap, so its numbers are approximate. The universe was selected from 2026 large caps with hindsight (survivorship bias). The direction grid runs without class weighting; the volatility grid explicitly keeps `class_weight: "balanced"`.
 
 ## Reproduce
 
