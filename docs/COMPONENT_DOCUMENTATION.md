@@ -399,7 +399,7 @@ class IterativeImputer(BaseImputer):
 
 | Model | Library | Key Parameters |
 |-------|---------|----------------|
-| Logistic Regression | sklearn.linear_model | C=1.0, max_iter=1000, class_weight=balanced |
+| Logistic Regression | sklearn.linear_model | C=1.0, max_iter=1000 (no class weighting by default) |
 | LightGBM | lightgbm.LGBMClassifier | n_estimators=200, max_depth=5, learning_rate=0.05, num_leaves=31 |
 
 **Unified Interface:**
@@ -437,8 +437,8 @@ class LightGBMModel(BaseModel):
 | Method | Description | sklearn Wrapper |
 |--------|-------------|-----------------|
 | `none` | Identity (no calibration) | - |
-| `platt` | Logistic regression on logits | CalibratedClassifierCV(method='sigmoid') |
-| `isotonic` | Non-parametric monotone mapping | CalibratedClassifierCV(method='isotonic') |
+| `platt` | Logistic regression on probabilities | sklearn.linear_model.LogisticRegression |
+| `isotonic` | Non-parametric monotone mapping | sklearn.isotonic.IsotonicRegression |
 
 **Unified Interface:**
 ```python
@@ -453,12 +453,10 @@ class NoCalibration(BaseCalibrator):
     def calibrate(self, proba): return proba
 
 class PlattCalibrator(BaseCalibrator):
-    # Fits on positive class probability (proba[:, 1])
-    # Uses CalibratedClassifierCV with method='sigmoid', cv='prefit'
+    # Fits LogisticRegression on calibration probabilities vs labels
 
 class IsotonicCalibrator(BaseCalibrator):
-    # Fits on positive class probability
-    # Uses CalibratedClassifierCV with method='isotonic', cv='prefit'
+    # Fits IsotonicRegression(out_of_bounds='clip') on calibration data
 ```
 
 **Critical Rule:** Calibrator fit on CALIBRATION split predictions, NOT training or test.
