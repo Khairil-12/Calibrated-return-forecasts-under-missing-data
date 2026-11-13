@@ -26,11 +26,9 @@ experiment:
     - name: "none"
       params: {}
     - name: "platt"
-      params:
-        method: "sigmoid"
+      params: {}
     - name: "isotonic"
-      params:
-        method: "isotonic"
+      params: {}
 
   missingness:
     mechanisms: ["MCAR", "MAR"]

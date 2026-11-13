@@ -253,16 +253,18 @@ def run_grid(
             output = ROOT / output
         output.parent.mkdir(parents=True, exist_ok=True)
         frame.to_csv(output, index=False)
-        summary, tests = summarize_results(frame)
+        summary, tests = summarize_results(frame, cfg.experiment.evaluation.metrics)
         summary.to_csv(output.with_name("summary.csv"), index=False)
         tests.to_csv(output.with_name("statistical_tests.csv"), index=False)
     return frame
 
 
-def summarize_results(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def summarize_results(
+    frame: pd.DataFrame, metrics: list[str] | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Summarize fold-level dispersion and paired comparisons with Holm correction."""
     experiments = frame[frame["row_type"] == "experiment"]
-    metrics = ["brier", "ece", "roc_auc"]
+    metrics = metrics or ["brier", "ece", "roc_auc"]
     summary = (
         experiments.groupby(["model", "imputer", "calibrator", "mechanism", "rate"], dropna=False)[
             metrics
