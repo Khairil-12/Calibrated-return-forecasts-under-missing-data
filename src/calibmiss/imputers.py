@@ -77,7 +77,7 @@ class MedianImputer:
 class IterativeImputerWrapper:
     """Wrapper for sklearn's IterativeImputer (MICE)."""
 
-    def __init__(self, max_iter: int = 10, random_state: int = 42) -> None:
+    def __init__(self, max_iter: int = 50, random_state: int = 42) -> None:
         self.imputer = IterativeImputer(max_iter=max_iter, random_state=random_state)
         self.columns_: list[str] = []
         self.index_: pd.Index = pd.Index([])
@@ -113,7 +113,17 @@ class IterativeImputerWrapper:
         return X_imp
 
 
-def get_imputer(config: Any) -> ForwardFillImputer | MedianImputer | IterativeImputerWrapper:
+class DropImputer:
+    """Listwise deletion (complete-case analysis): drop any row with a NaN."""
+
+    def fit(self, X: pd.DataFrame) -> "DropImputer":
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        return X.dropna(how="any")
+
+
+def get_imputer(config: Any) -> ForwardFillImputer | MedianImputer | IterativeImputerWrapper | DropImputer:
     """Factory function to get imputer instance from config.
 
     Args:
@@ -128,5 +138,7 @@ def get_imputer(config: Any) -> ForwardFillImputer | MedianImputer | IterativeIm
         return MedianImputer()
     elif config.name == "iterative":
         return IterativeImputerWrapper(**config.params)
+    elif config.name == "drop":
+        return DropImputer()
     raise ValueError(f"Unknown imputer: {config.name}")
 

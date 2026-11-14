@@ -27,7 +27,7 @@ def test_load_experiment_config():
     cfg = get_config()
 
     assert len(cfg.experiment.models) == 2
-    assert len(cfg.experiment.imputers) == 3
+    assert len(cfg.experiment.imputers) == 4
     assert len(cfg.experiment.calibrators) == 3
 
     # Check model names
@@ -48,7 +48,7 @@ def test_load_experiment_config():
     assert "isotonic" in calibrator_names
 
     # Check missingness config
-    assert cfg.experiment.missingness.mechanisms == ["MCAR", "MAR"]
+    assert cfg.experiment.missingness.mechanisms == ["MCAR", "MCAR-BLOCK", "MAR"]
     assert cfg.experiment.missingness.rates == [0.0, 0.1, 0.2, 0.3]
     assert cfg.experiment.missingness.seeds == [42, 123, 456, 789, 999]
 

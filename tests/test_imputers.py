@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from calibmiss.imputers import ForwardFillImputer, IterativeImputerWrapper, MedianImputer
+from calibmiss.imputers import DropImputer, ForwardFillImputer, IterativeImputerWrapper, MedianImputer
 
 
 class TestForwardFillImputer:
@@ -163,6 +163,40 @@ class TestIterativeImputerWrapper:
         assert not X_train_imp.isna().any().any()
         assert not X_test_imp.isna().any().any()
         np.testing.assert_array_equal(imputer.imputer.initial_imputer_.statistics_, fitted_statistics)
+
+
+def _ticker_frame(n_ticks: int = 5, n_days: int = 200) -> pd.DataFrame:
+    idx = pd.MultiIndex.from_product(
+        [range(n_ticks), range(n_days)], names=["ticker", "date"]
+    )
+    return pd.DataFrame(np.random.randn(n_ticks * n_days, 3), index=idx)
+
+
+class TestDropImputer:
+    """Tests for DropImputer (listwise deletion)."""
+
+    def test_drop_incomplete_rows(self) -> None:
+        X = pd.DataFrame({"a": [1.0, 2.0, np.nan], "b": [3.0, np.nan, 4.0]})
+        out = DropImputer().transform(X)
+        assert len(out) == 1
+        assert out.iloc[0]["a"] == 1.0 and out.iloc[0]["b"] == 3.0
+
+    def test_drop_fit_is_noop_and_train_only(self) -> None:
+        """DropImputer fits nothing; transform drops any row with a NaN."""
+        X_train = pd.DataFrame({"a": [1.0, 2.0, np.nan]})
+        X_test = pd.DataFrame({"a": [5.0, np.nan, 6.0]})
+        imp = DropImputer().fit(X_train)
+        out_train = imp.transform(X_train)
+        out_test = imp.transform(X_test)
+        assert len(out_train) == 2
+        assert out_test.index.tolist() == [0, 2]
+
+    def test_drop_preserves_multiindex_rows(self) -> None:
+        X = _ticker_frame(n_ticks=2, n_days=10)
+        X.iloc[3] = np.nan  # one row in ticker 0 day 3
+        out = DropImputer().transform(X)
+        assert len(out) == len(X) - 1
+        assert (3,) not in out.index.get_level_values("date")
 
 
 class TestFitOnTrainOnly:

@@ -22,8 +22,10 @@ experiment:
       params: {}
     - name: "iterative"
       params:
-        max_iter: 10
+        max_iter: 50
         random_state: 42
+    - name: "drop"
+      params: {}
 
   calibrators:
     - name: "none"
@@ -34,7 +36,7 @@ experiment:
       params: {}
 
   missingness:
-    mechanisms: ["MCAR", "MAR"]
+    mechanisms: ["MCAR", "MCAR-BLOCK", "MAR"]
     rates: [0.0, 0.1, 0.2, 0.3]
     seeds: [42, 123, 456, 789, 999]
 

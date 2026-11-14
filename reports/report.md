@@ -30,11 +30,11 @@ The target is one when next-day adjusted close exceeds current adjusted close. Z
 
 ### Missingness
 
-MCAR masks each feature value independently at the configured rate. MAR masks `volatility_20d` using the configured dependence on `volume_ratio`; the probability is calibrated to the requested average rate. Each mechanism receives fixed seeds, and realized rates are recorded.
+MCAR masks each feature value independently at the configured rate. MCAR-BLOCK masks whole consecutive-day blocks per ticker — start probability calibrated to the requested rate, then each block extends to a length drawn uniformly from 2–10 days — reflecting how real daily data goes missing in streaks (halts, API gaps, delist days) rather than cell-by-cell; a fixed-length block destroys more information than MCAR at the same rate. MAR masks `volatility_20d` using the configured dependence on `volume_ratio`; the probability is calibrated to the requested average rate. Each mechanism receives fixed seeds, and realized rates are recorded.
 
 ### Imputation
 
-The grid compares within-ticker causal forward fill, training-set median imputation, and scikit-learn iterative imputation. Every imputer is fit on training rows only, then applied to calibration and test rows.
+The grid compares within-ticker causal forward fill, training-set median imputation, scikit-learn iterative imputation (configured at `max_iter: 50` so it reaches its early-stopping criterion on these matrices), and complete-case analysis (rows with any NaN are dropped). Every imputer is fit on training rows only, then applied to calibration and test rows. The drop imputer changes the test set by construction (it removes the very rows with missingness), so its metrics are a baseline reference rather than a like-for-like competitor at a fixed rate.
 
 ### Models and calibration
 
@@ -57,15 +57,15 @@ The configured grid contains:
 | Dimension | Levels |
 |---|---:|
 | Models | 2 |
-| Imputers | 3 |
+| Imputers | 4 (forward_fill, median, iterative, drop) |
 | Calibrators | 3 |
-| Mechanisms | 2 |
+| Mechanisms | 3 (MCAR, MCAR-BLOCK, MAR) |
 | Rates | 4: 0%, 10%, 20%, 30% |
 | Seeds | 5 |
 
-This gives 144 configurations per walk-forward fold and 720 configuration-seed runs per fold, before baseline rows. Exact fold counts depend on the available trading-date range.
+This gives 288 configurations per walk-forward fold and 1,440 configuration-seed runs per fold (double the earlier 3-imputer/2-mechanism grid), before baseline rows. Exact fold counts depend on the available trading-date range. The grid output shown here was produced with the earlier 3-imputer / 2-mechanism configuration; results in `results/` will be refreshed by the next full run under the expanded config.
 
-Primary comparisons should use identical fold, seed, model, mechanism, and rate keys. The complete-data oracle is a reference condition, not a claim that missingness can be removed in deployment. The naive baseline is a prevalence reference, not a classifier.
+Primary comparisons should use identical fold, seed, model, mechanism, and rate keys. The complete-data oracle is a reference condition, not a claim that missingness can be removed in deployment. The naive baseline is a prevalence reference, not a classifier. The drop imputer is a complete-case analysis baseline: it discards any row with a NaN, so its test set differs from the imputers' by design and its metrics are not directly comparable at fixed rates.
 
 ## Results
 
@@ -138,7 +138,7 @@ The missingness dimension is inconclusive for the reason given above, and that c
 - Models in the direction grid run without class weighting; an earlier balanced-weighted run inflated uncalibrated LR ECE (0.0397 vs 0.0234 unweighted) because balanced weighting pulls probabilities toward 0.5, and Platt scaling appeared to correct more of it than it actually does. The volatility grid keeps `class_weight: "balanced"` explicitly — its target is ~50/50 by construction, so weighting is near-neutral there.
 - The target carries essentially no predictable signal (ROC AUC ≈ 0.5), so the study cannot measure how missingness degrades a working predictor. Research question 1 needs a target with real signal, such as realized volatility.
 - Walk-forward folds overlap in calendar time and the five seeds share the same underlying observations, so the paired Wilcoxon tests treat dependent observations as independent. The Holm-corrected p-values overstate the evidence; the effect sizes (~0.005 Brier) are the trustworthy summary.
-- The iterative (MICE) imputer emits a convergence warning at `max_iter: 10` and does not reach its stopping criterion. Its rows completed, but the imputed values are approximate.
+- The grid is configured with `max_iter: 50` for the iterative (MICE) imputer, up from 10 in earlier runs; at 50 the early-stopping criterion is reached for these matrices and the convergence warning is gone.
 - The highest single-run ROC AUC (0.571) is one fold and disappears under label permutation, but per-fold AUC still ranges from 0.478 to 0.562, so individual folds are noisy.
 - MCAR and MAR are simulations, not a complete model of production data collection or market microstructure.
 - The MAR design uses one configured dependence rule and one target feature; sensitivity to other dependence structures is not established.

@@ -85,7 +85,7 @@ calibmiss/
 │   ├── config.py                # Pydantic config loading with caching
 │   ├── data.py                  # Download, cache, validate OHLCV
 │   ├── features.py              # Feature engineering + lookahead test
-│   ├── missingness.py           # MCAR/MAR simulation
+│   ├── missingness.py           # MCAR / MCAR-BLOCK / MAR simulation
 │   ├── imputers.py              # Imputation strategies (fit on train only)
 │   ├── calibration.py           # Platt / isotonic calibration
 │   ├── splits.py                # Walk-forward splits with purge gap
@@ -98,7 +98,7 @@ calibmiss/
 │   ├── test_config.py           # Config loading tests
 │   ├── test_data.py             # Data download/validation tests
 │   ├── test_features_lookahead.py  # Lookahead bias tests
-│   ├── test_missingness.py      # MCAR/MAR simulation tests
+│   ├── test_missingness.py      # MCAR / MCAR-BLOCK / MAR simulation tests
 │   ├── test_splits.py           # Walk-forward split tests
 │   ├── test_imputers.py         # Imputer fit-on-train tests
 │   ├── test_calibration.py      # Calibration fit-on-calib tests
@@ -160,7 +160,7 @@ Config: universe, experiment
 **Validation:**
 - All fields validated by Pydantic
 - Ticker count must be 30
-- Mechanisms must include "MCAR" and "MAR"
+- Mechanisms may include "MCAR", "MCAR-BLOCK", and "MAR"
 - Rates must be [0.0, 0.1, 0.2, 0.3]
 - Seeds must be 5 integers
 
@@ -298,12 +298,22 @@ class WalkForwardSplitter:
 
 ### 4.5 Missingness Module (`src/calibmiss/missingness.py`)
 
-**Responsibility:** Simulate MCAR and MAR missingness on feature matrices.
+**Responsibility:** Simulate MCAR, MCAR-BLOCK, and MAR missingness on feature matrices.
 
 **MCAR (Missing Completely At Random):**
 - Each feature value independently missing with probability `p`
 - `p ∈ {0.0, 0.1, 0.2, 0.3}`
 - No dependence on any variable
+
+**MCAR-BLOCK (streak missingness):**
+- Masks whole consecutive-day blocks per ticker, reflecting real data going
+  missing in streaks (halts, API gaps, delist days) rather than cell-by-cell.
+- A day opens a block with calibrated probability; the block then extends to a
+  length drawn uniformly from 2..`max_block` (default 10), trimmed to the end
+  of the ticker. Start probability is p-calibrated so the realized row-missing
+  rate matches the target (a single block destroys more information than MCAR
+  at the same rate).
+- Requires a MultiIndex with a `ticker` level; blocks never cross tickers.
 
 **MAR (Missing At Random):**
 - Missing probability depends on OBSERVED variable (not the missing value itself)
@@ -323,34 +333,34 @@ class WalkForwardSplitter:
 
 **Functions:**
 ```python
-class MCAR:
-    def __init__(self, rate: float, seed: int)
-    def apply(X: pd.DataFrame) -> tuple[X_missing, mask]
-        # X_missing: copy with NaN at masked positions
-        # mask: boolean DataFrame (True = missing)
-
-class MAR:
-    def __init__(self, rate: float, seed: int, rules: list[MARRuleConfig])
-    def apply(X: pd.DataFrame) -> tuple[X_missing, mask]
-
-def simulate_missingness(X, mechanism, rate, seed, mar_rules=None) -> tuple[X_missing, mask]
+def inject_mcar(X, rate, seed) -> tuple[X_missing, realized]
+def inject_mcar_block(X, rate, seed, max_block=10, tol=0.005, max_iter=20)
+        -> tuple[X_missing, realized]
+def inject_mar(X, rule, target_rate, seed, depends_on_threshold=None)
+        -> tuple[X_missing, realized]
+def simulate_missingness_grid(X, mechanisms, rates, seeds, mar_rules)
+        -> results[mechanism][rate][seed]
 ```
 
 **Reproducibility:**
-- Uses `np.random.Generator(seed)` for deterministic results
+- Uses `np.random.RandomState(seed)` for deterministic results
 - Same seed + same input = same mask
+- Block start probability is calibrated by iterative rescaling so the realized
+  missing rate matches the target within `tol`.
 
 **Tests (tests/test_missingness.py):**
-- MCAR: realized rate ≈ target rate (within 1%)
+- MCAR: realized rate ≈ target rate
 - MCAR: same seed produces identical mask
+- MCAR-BLOCK: every missing cell has a missing neighbour (no isolated cells)
+- MCAR-BLOCK: realized row-rate ≈ target (calibrated)
 - MAR: missing rate higher when depends_on > threshold
-- Both: mask shape matches input, NaN only at True positions
+- Grid: dispatches each mechanism to the right injector
 
 ---
 
 ### 4.6 Imputers Module (`src/calibmiss/imputers.py`)
 
-**Responsibility:** Three imputation strategies, ALL fit on TRAIN only, transform train/calib/test.
+**Responsibility:** Four imputation strategies, ALL fit on TRAIN only, transform train/calib/test.
 
 **Imputation Strategies:**
 
@@ -358,29 +368,29 @@ def simulate_missingness(X, mechanism, rate, seed, mar_rules=None) -> tuple[X_mi
 |--------|-------------|--------|--------------|
 | `forward_fill` | Carry last observed forward within ticker | Train | Train, Calib, Test |
 | `median` | Replace with training-set median per column | Train | Train, Calib, Test |
-| `iterative` | MICE-style (sklearn IterativeImputer) | Train | Train, Calib, Test |
+| `iterative` | MICE-style (sklearn IterativeImputer, max_iter 50) | Train | Train, Calib, Test |
+| `drop` | Listwise deletion — drop any row with a NaN | No-op | Drops incomplete rows |
 
 **Critical Rule:** `fit()` called ONLY on training data. `transform()` applied to all splits.
 
 **Classes:**
 ```python
-class BaseImputer(ABC):
-    @abstractmethod
-    def fit(self, X: pd.DataFrame) -> Self
-    @abstractmethod
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame
+class ForwardFillImputer:
+    def fit(self, X) -> Self   # ticker-level ffill + median fallback
+    def transform(self, X) -> pd.DataFrame
 
-class ForwardFillImputer(BaseImputer):
-    # groupby ticker, ffill within group
-    # Leading NaNs: leave as NaN (handled by median fallback?)
+class MedianImputer:
+    def fit(self, X) -> Self   # stores column medians
+    def transform(self, X) -> pd.DataFrame
 
-class MedianImputer(BaseImputer):
-    # Stores column medians from fit()
-    # transform() fills NaN with stored medians
+class IterativeImputerWrapper:
+    def __init__(self, max_iter=50, random_state=42)
+    def fit(self, X) -> Self
+    def transform(self, X) -> pd.DataFrame
 
-class IterativeImputer(BaseImputer):
-    # Wraps sklearn.impute.IterativeImputer
-    # Stores fitted imputer
+class DropImputer:
+    def fit(self, X) -> Self   # no-op (complete-case set decided at fit)
+    def transform(self, X) -> pd.DataFrame   # drop rows with any NaN
 ```
 
 **Tests (tests/test_imputers.py):**
@@ -388,6 +398,7 @@ class IterativeImputer(BaseImputer):
 - Forward fill: works within ticker groups
 - All imputers: fit on train, transform on test produces no NaN (if train had no all-NaN columns)
 - No data leakage: imputer state doesn't change after fit
+- DropImputer: incomplete rows removed; MultiIndex rows preserved correctly
 
 ---
 
@@ -535,7 +546,7 @@ def run_single_config(config: dict, fold_idx: int, seed: int) -> dict:
     "model": str,
     "imputer": str,
     "calibrator": str,
-    "mechanism": str,  # MCAR or MAR
+    "mechanism": str,  # MCAR | MCAR-BLOCK | MAR
     "rate": float,
     "seed": int,
     "fold": int,
@@ -559,8 +570,8 @@ def run_single_config(config: dict, fold_idx: int, seed: int) -> dict:
 **Responsibility:** Execute full experimental grid, parallelize, save results incrementally.
 
 **Grid Size:**
-- 2 models × 3 imputers × 3 calibrators × 2 mechanisms × 4 rates × 5 seeds × n_folds
-- = 720 × n_folds configurations (typically 3-5 folds = 2160-3600 runs)
+- 2 models × 4 imputers × 3 calibrators × 3 mechanisms × 4 rates × 5 seeds × n_folds
+- = 1440 × n_folds configurations
 
 **Implementation:**
 ```python
@@ -599,7 +610,7 @@ def main():
 
 | Figure | Description |
 |--------|-------------|
-| `brier_vs_missingness.png` | Line plot: Brier vs missing rate, grouped by imputer, faceted by calibrator, separate for MCAR/MAR |
+| `brier_vs_missingness.png` | Line plot: Brier vs missing rate, grouped by imputer, faceted by calibrator, separate for mechanism |
 | `ece_vs_missingness.png` | Line plot: ECE vs missing rate, same grouping |
 | `reliability_0pct.png` | Reliability diagram at 0% missingness (averaged across seeds/folds) |
 | `reliability_30pct.png` | Reliability diagram at 30% missingness |
@@ -631,7 +642,7 @@ def main():
    3.6 Evaluation
    3.7 Experimental Design
 ## 4. Results
-   4.1 Calibration Degradation (MCAR vs MAR)
+   4.1 Calibration Degradation (mechanism comparison)
    4.2 Imputation Effects
    4.3 Calibration Recovery
    4.4 Discrimination Trade-offs
@@ -673,7 +684,7 @@ def main():
 │                    run_grid.py (parallel)                    │
 │  For each config:                                           │
 │  1. Split (walk-forward + purge)                            │
-│  2. Missingness (MCAR/MAR)                                  │
+│  2. Missingness (MCAR / MCAR-BLOCK / MAR)                    │
 │  3. Impute (fit train → transform all)                      │
 │  4. Model fit (train) → predict_proba (calib, test)         │
 │  5. Calibrator fit (calib) → calibrate (test)               │
@@ -739,10 +750,10 @@ universe:
 ```yaml
 experiment:
   models: [logistic_regression, lightgbm]  # with params
-  imputers: [forward_fill, median, iterative]  # with params
+  imputers: [forward_fill, median, iterative, drop]  # with params
   calibrators: [none, platt, isotonic]  # with params
   missingness:
-    mechanisms: ["MCAR", "MAR"]
+    mechanisms: ["MCAR", "MCAR-BLOCK", "MAR"]
     rates: [0.0, 0.1, 0.2, 0.3]
     seeds: [42, 123, 456, 789, 999]
   splits:
